@@ -16,6 +16,10 @@ test("licensed Wavebinder runtime propagates multi-source renovation readiness",
   assert.ok(info.multiNodeCount > 0);
   assert.ok(info.listNodeCount > 0);
   assert.equal(info.subscriptionCount, info.complexNodeCount);
+  const bathroomMaterials = info.dataPool["bathroom__materials"] as Array<Record<string, unknown>>;
+  assert.ok(Array.isArray(bathroomMaterials));
+  assert.equal(bathroomMaterials.length, 2);
+  assert.equal(bathroomMaterials.find((item) => item.materialId === "bathroom-tiles")?.deliveryDays, 14);
   assert.equal(runtime.taskState("bathroom-plumbing")?.status, "READY");
   assert.equal(runtime.isReady("bathroom-plumbing"), true);
   assert.equal(runtime.isReady("bathroom-waterproofing"), false);
@@ -37,4 +41,14 @@ test("licensed scenario creates an independent Wavebinder graph", { skip: !licen
   assert.equal(result.graph.runtime?.ready, true);
   assert.ok((result.graph.runtime?.nodeCount ?? 0) > baseline.nodes.length * 2);
   assert.equal(baseline.nodes.find((node) => node.id === "bathroom-plumbing")?.durationDays, 4);
+});
+
+test("licensed material scenario rebuilds structured lists and delays dependent schedule", { skip: !licensed }, async () => {
+  const baseline = createDemoData();
+  const result = await simulate(baseline, "Material delay", [{ nodeId: "bathroom-tiles", deliveryDeltaDays: 14, estimatedCostDelta: 350 }]);
+  assert.equal(result.impact.delayDays, 14);
+  assert.equal(result.impact.additionalCost, 350);
+  const bathroomMaterials = result.graph.runtime?.dataPool["bathroom__materials"] as Array<Record<string, unknown>>;
+  assert.equal(bathroomMaterials.find((item) => item.materialId === "bathroom-tiles")?.deliveryDays, 28);
+  assert.equal(baseline.nodes.find((node) => node.id === "bathroom-tiles")?.options?.[0].deliveryDays, 14);
 });

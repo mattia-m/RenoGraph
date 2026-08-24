@@ -13,7 +13,8 @@ Open `http://localhost:5173`.
 ## Core Flow
 
 1. Open Casa Rossi.
-2. Inspect the graph, relationships and Wavebinder telemetry.
+2. Inspect the graph, relationships and Wavebinder telemetry. Select a task to
+   expand the focused live data-pool/dependency inspector.
 3. Select `Bathroom plumbing`; verify it is `READY`.
 4. Start the task.
 5. Complete the task.
@@ -23,15 +24,17 @@ Open `http://localhost:5173`.
 9. Enable critical-path highlighting.
 10. Verify critical nodes, edges and projected completion are visible.
 11. Select a task and open `Simulate change`.
-12. Simulate a delay.
+12. Simulate a duration delay.
 13. Verify the result shows baseline versus scenario completion, cost, delay,
     critical-path change and affected nodes.
 14. Toggle between `Baseline` and `Scenario` views.
 15. Close/reset the scenario and verify baseline state is unchanged.
-16. Select a material node.
-17. Switch between material options.
-18. Verify the `MULTI` choice changes cost, availability and dependent state.
-19. Add or remove a relationship through the API if demonstrating topology:
+16. Select `Bathroom tiles` and simulate a delivery delay.
+17. Verify material delivery time shifts dependent task starts and completion.
+18. Select a material option and verify the `MULTI` choice changes cost,
+    availability, delivery constraint and dependent state.
+19. Select a room and inspect real `LIST` → `COMPLEX` material values.
+20. Add or remove a relationship through the API if demonstrating topology:
 
 ```bash
 curl -X POST http://localhost:3001/api/renovations/casa-rossi/relationships \
@@ -39,8 +42,8 @@ curl -X POST http://localhost:3001/api/renovations/casa-rossi/relationships \
   -d '{"fromNodeId":"bathroom-fixtures","toNodeId":"bathroom-tiling","type":"DEPENDS_ON"}'
 ```
 
-20. Verify runtime rebuild telemetry increments and derived state is stable.
-21. Use `Reset demo` to restore the canonical dataset.
+21. Verify runtime rebuild telemetry increments and derived state is stable.
+22. Use `Reset demo` to restore the canonical dataset.
 
 ## Strong Judge Moments
 

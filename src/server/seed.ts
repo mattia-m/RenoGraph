@@ -76,9 +76,13 @@ export function createDemoData(): RenovationData {
   [
     ["bathroom-plumbing", "bathroom-demolition"], ["bathroom-electrical", "bathroom-demolition"], ["bathroom-waterproofing", "bathroom-plumbing"],
     ["bathroom-waterproofing", "bathroom-electrical"], ["bathroom-tiling", "bathroom-waterproofing"], ["bathroom-grouting", "bathroom-tiling"], ["bathroom-fixtures", "bathroom-grouting"],
-    ["kitchen-plumbing", "kitchen-demolition"], ["kitchen-electrical", "kitchen-demolition"], ["kitchen-flooring", "kitchen-demolition"], ["kitchen-painting", "kitchen-electrical"], ["kitchen-installation", "kitchen-flooring"], ["kitchen-installation", "kitchen-plumbing"], ["kitchen-installation", "kitchen-painting"],
-    ["living-plastering", "living-electrical"], ["living-flooring", "living-plastering"], ["living-painting", "living-flooring"],
-    ["final-painting", "living-painting"], ["final-painting", "kitchen-painting"], ["final-painting", "bathroom-fixtures"], ["final-inspection", "final-painting"], ["final-inspection", "windows"], ["final-inspection", "heating"],
+    ["kitchen-plumbing", "kitchen-demolition"], ["kitchen-electrical", "kitchen-demolition"],
+    ["kitchen-painting", "kitchen-plumbing"], ["kitchen-painting", "kitchen-electrical"],
+    ["kitchen-flooring", "kitchen-painting"],
+    ["kitchen-installation", "kitchen-flooring"], ["kitchen-installation", "kitchen-plumbing"], ["kitchen-installation", "kitchen-electrical"],
+    ["living-plastering", "living-electrical"], ["living-painting", "living-plastering"], ["living-flooring", "living-painting"],
+    ["final-painting", "bathroom-fixtures"], ["final-painting", "kitchen-installation"], ["final-painting", "living-flooring"],
+    ["final-painting", "windows"], ["final-painting", "heating"], ["final-inspection", "final-painting"],
   ].forEach(([from, to]) => depends(from, to));
   [
     ["bathroom-tiling", "bathroom-tiles"], ["bathroom-fixtures", "bathroom-fixtures-material"], ["kitchen-installation", "kitchen-cabinets"], ["kitchen-flooring", "kitchen-tiles"], ["living-flooring", "flooring-material"], ["final-painting", "paint-material"], ["windows", "window-material"], ["heating", "heating-material"],

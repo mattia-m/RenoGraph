@@ -48,8 +48,8 @@ docker compose up --build
 3. Start it, then mark it complete. Wavebinder updates downstream facts and Renograph derives the next readiness state.
 4. Select `Bathroom tiling` or `Install fixtures` to inspect direct dependencies and root blocker chains.
 5. Highlight the critical path to see the CPM result on the graph.
-6. Select a task and run a what-if delay. The result shows completion, cost, critical-path and affected-node deltas without mutating baseline state.
-7. Select a material and mark it delivered to release its dependent work.
+6. Select a task or material and run a what-if duration/delivery delay. The result shows completion, cost, critical-path and affected-node deltas without mutating baseline state.
+7. Select a room to inspect its live structured material `LIST`, or select a material and mark it delivered to release dependent work.
 
 The complete repeatable runbook is in [`DEMO.md`](DEMO.md).
 
@@ -113,7 +113,7 @@ tasks / materials / relationships
 | Derived readiness | `CUSTOM_FUNCTION` nodes depending on all prerequisites |
 | Material availability | Material fact nodes feeding task readiness |
 | Material variants | `MULTI` choices with reactive availability |
-| Room material bundles | `LIST` nodes reconstructed from room requirements |
+| Room material bundles | `LIST` nodes populated with `COMPLEX` material requirements, selected options, delivery times, cost and dependent task IDs |
 | Structured task state | `COMPLEX` nodes with status, duration and cost fields |
 | Runtime propagation | RxJS node subscriptions and `.next()` updates |
 | Independent runtime | A separate `WaveBinder` instance per graph runtime |
@@ -123,7 +123,7 @@ tasks / materials / relationships
 | --- | --- |
 | Renovation semantics | `NodeType`, statuses and relationship rules |
 | Cycle validation | Domain graph validation before topology changes |
-| Schedule | Topological earliest/latest pass |
+| Schedule | Topological earliest/latest pass with selected material delivery constraints |
 | Critical path | CPM slack calculation |
 | Cost | Domain aggregation and scenario deltas |
 | Scenario comparison | Clone, change, recalculate and compare |
@@ -180,10 +180,12 @@ npm run benchmark
 ```
 
 The tests cover chains, diamonds, parallel slack, blocker roots, cycle
-rejection, critical delays, critical-path changes, non-critical delays, seed
-graph shape and baseline immutability. Licensed integration tests cover the
-real Wavebinder runtime when `WAVEBINDER_LICENSE` is configured. The executable
-Wavebinder spikes are in `spike/`.
+rejection, critical delays, critical-path changes, non-critical delays,
+material delivery constraints, structured room bundles, seed graph shape and
+baseline immutability. Licensed integration tests cover the real Wavebinder
+runtime, populated `LIST`/`COMPLEX` values and material scenarios when
+`WAVEBINDER_LICENSE` is configured. The executable Wavebinder spikes are in
+`spike/`.
 
 The benchmark reports median and p95 timings for scheduling. With a license it
 also measures Wavebinder runtime construction and isolated scenario analysis.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyze, simulatePure } from "./analysis.js";
-import { blockers, schedule, topologicalTasks, validateNoCycle } from "./graph.js";
+import { blockers, roomMaterialRequirements, schedule, topologicalTasks, validateNoCycle } from "./graph.js";
 import { createDemoData } from "./seed.js";
 import type { RenovationData } from "../shared/types.js";
 
@@ -82,4 +82,78 @@ test("Casa Rossi seed contains the intended graph shapes", () => {
   assert.ok([...incoming.values()].some((count) => count >= 2), "expected fan-in");
   assert.ok([...outgoing.values()].some((count) => count >= 2), "expected fan-out");
   assert.ok(data.relationships.some((edge) => edge.type === "REQUIRES_MATERIAL"));
+});
+
+test("Casa Rossi work packages follow realistic trade sequencing", () => {
+  const data = createDemoData();
+  const dependencies = new Set(data.relationships
+    .filter((relationship) => relationship.type === "DEPENDS_ON")
+    .map((relationship) => `${relationship.fromNodeId}->${relationship.toNodeId}`));
+  const expectDependency = (task: string, prerequisite: string) => {
+    assert.ok(dependencies.has(`${task}->${prerequisite}`), `${task} should depend on ${prerequisite}`);
+  };
+
+  expectDependency("bathroom-waterproofing", "bathroom-plumbing");
+  expectDependency("bathroom-waterproofing", "bathroom-electrical");
+  expectDependency("kitchen-painting", "kitchen-plumbing");
+  expectDependency("kitchen-painting", "kitchen-electrical");
+  expectDependency("kitchen-flooring", "kitchen-painting");
+  expectDependency("kitchen-installation", "kitchen-flooring");
+  expectDependency("living-painting", "living-plastering");
+  expectDependency("living-flooring", "living-painting");
+  expectDependency("final-painting", "bathroom-fixtures");
+  expectDependency("final-painting", "kitchen-installation");
+  expectDependency("final-painting", "living-flooring");
+  expectDependency("final-painting", "windows");
+  expectDependency("final-painting", "heating");
+  expectDependency("final-inspection", "final-painting");
+});
+
+test("kitchen flooring remains blocked while plumbing is unfinished", () => {
+  const data = createDemoData();
+  data.nodes.find((node) => node.id === "kitchen-demolition")!.status = "COMPLETED";
+  data.nodes.find((node) => node.id === "kitchen-electrical")!.status = "COMPLETED";
+  data.nodes.find((node) => node.id === "kitchen-plumbing")!.status = "IN_PROGRESS";
+
+  const explanation = blockers(data, "kitchen-flooring");
+  assert.equal(explanation.status, "BLOCKED");
+  assert.ok(explanation.rootBlockers.includes("kitchen-plumbing"));
+});
+
+test("selected material delivery constrains task scheduling", () => {
+  const data = createDemoData();
+  const material = data.nodes.find((node) => node.id === "bathroom-tiles")!;
+  material.selectedOptionId = "standard";
+  const tiling = schedule(data).find((entry) => entry.nodeId === "bathroom-tiling")!;
+  assert.equal(tiling.materialReadyDay, 14);
+  assert.deepEqual(tiling.materialConstraints, [{ materialId: "bathroom-tiles", deliveryDays: 14 }]);
+  material.status = "COMPLETED";
+  assert.equal(schedule(data).find((entry) => entry.nodeId === "bathroom-tiling")?.materialReadyDay, 0);
+});
+
+test("material delivery scenarios move dependent work without mutating baseline", () => {
+  const data = createDemoData();
+  const result = simulatePure(data, "tiles delayed", [{ nodeId: "bathroom-tiles", deliveryDeltaDays: 14, estimatedCostDelta: 350 }]);
+  assert.equal(result.impact.delayDays, 14);
+  assert.equal(result.impact.additionalCost, 350);
+  assert.ok(result.affectedNodes.some((node) => node.id === "bathroom-tiles" && node.scheduleDeltaDays === 14));
+  assert.ok(result.affectedNodes.some((node) => node.id === "bathroom-tiling"));
+  assert.equal(data.nodes.find((node) => node.id === "bathroom-tiles")?.options?.[0].deliveryDays, 14);
+});
+
+test("room material requirements contain structured selected-option values", () => {
+  const data = createDemoData();
+  const bathroom = roomMaterialRequirements(data, "bathroom");
+  assert.equal(bathroom.length, 2);
+  assert.deepEqual(bathroom.find((item) => item.materialId === "bathroom-tiles"), {
+    materialId: "bathroom-tiles",
+    materialName: "Bathroom tiles",
+    selectedOptionId: "standard",
+    selectedOptionLabel: "Standard",
+    available: false,
+    delivered: false,
+    deliveryDays: 14,
+    estimatedCost: 500,
+    requiredByTaskIds: ["bathroom-tiling"],
+  });
 });

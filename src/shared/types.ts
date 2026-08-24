@@ -36,6 +36,18 @@ export interface MaterialOption {
   available: boolean;
 }
 
+export interface RoomMaterialRequirement {
+  materialId: string;
+  materialName: string;
+  selectedOptionId: string;
+  selectedOptionLabel: string;
+  available: boolean;
+  delivered: boolean;
+  deliveryDays: number;
+  estimatedCost: number;
+  requiredByTaskIds: string[];
+}
+
 export interface Relationship {
   id: string;
   renovationId: string;
@@ -58,6 +70,8 @@ export interface ScheduleEntry {
   latestFinish: number;
   slack: number;
   critical: boolean;
+  materialReadyDay: number;
+  materialConstraints: Array<{ materialId: string; deliveryDays: number }>;
 }
 
 export interface Analysis {
@@ -100,6 +114,7 @@ export interface GraphResponse {
     rebuildCount: number;
     eventCount: number;
     lastEvent?: string;
+    dataPool: Record<string, unknown>;
   };
 }
 
@@ -121,6 +136,8 @@ export interface ScenarioChange {
   newDurationDays?: number;
   newStatus?: NodeStatus;
   estimatedCostDelta?: number;
+  deliveryDeltaDays?: number;
+  newDeliveryDays?: number;
 }
 
 export interface ScenarioResult {

@@ -121,6 +121,10 @@ Open Casa Rossi
 - [x] Material option selection updates cost and dependent readiness.
 - [x] Runtime propagation events are available through API and visible in the UI.
 - [x] `LIST` Wavebinder nodes represent room material bundles.
+- [x] Room material `LIST` children contain real `COMPLEX` requirement values.
+- [x] Focused live data-pool and dependency inspector added to node details.
+- [x] Selected material delivery days constrain CPM earliest starts.
+- [x] Material delivery-delay scenarios update downstream schedules and completion.
 - [x] Relationship add/remove rebuilds the isolated runtime and re-derives state.
 - [x] Deterministic `DEMO.md` runbook added.
 - [x] Reset-demo endpoint and UI action added.

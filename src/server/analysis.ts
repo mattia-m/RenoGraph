@@ -44,21 +44,54 @@ function applyChanges(data: RenovationData, changes: ScenarioChange[]): void {
   for (const change of changes) {
     const node = data.nodes.find((candidate) => candidate.id === change.nodeId);
     if (!node) throw new Error("NODE_NOT_FOUND");
-    if (change.durationDeltaDays !== undefined) node.durationDays = Math.max(0, (node.durationDays ?? 0) + change.durationDeltaDays);
-    if (change.newDurationDays !== undefined) node.durationDays = Math.max(0, change.newDurationDays);
+    const selectedOption = node.type === "MATERIAL" ? node.options?.find((option) => option.id === node.selectedOptionId) ?? node.options?.[0] : undefined;
+    if (node.type === "MATERIAL") {
+      const deliveryDelta = change.deliveryDeltaDays ?? change.durationDeltaDays;
+      const newDelivery = change.newDeliveryDays ?? change.newDurationDays;
+      if (!selectedOption && (deliveryDelta !== undefined || newDelivery !== undefined)) throw new Error("MATERIAL_OPTION_NOT_FOUND");
+      if (deliveryDelta !== undefined && selectedOption) selectedOption.deliveryDays = Math.max(0, selectedOption.deliveryDays + deliveryDelta);
+      if (newDelivery !== undefined && selectedOption) selectedOption.deliveryDays = Math.max(0, newDelivery);
+    } else {
+      if (change.durationDeltaDays !== undefined) node.durationDays = Math.max(0, (node.durationDays ?? 0) + change.durationDeltaDays);
+      if (change.newDurationDays !== undefined) node.durationDays = Math.max(0, change.newDurationDays);
+    }
     if (change.newStatus) node.status = change.newStatus;
-    if (change.estimatedCostDelta !== undefined) node.estimatedCost = (node.estimatedCost ?? 0) + change.estimatedCostDelta;
+    if (change.estimatedCostDelta !== undefined) {
+      if (node.type === "MATERIAL" && selectedOption) {
+        selectedOption.estimatedCost += change.estimatedCostDelta;
+        node.estimatedCost = selectedOption.estimatedCost;
+      } else {
+        node.estimatedCost = (node.estimatedCost ?? 0) + change.estimatedCostDelta;
+      }
+    }
   }
+}
+
+function selectedDeliveryDays(data: RenovationData, nodeId: string): number {
+  const material = data.nodes.find((node) => node.id === nodeId && node.type === "MATERIAL");
+  if (!material) return 0;
+  if (material.status === "COMPLETED") return 0;
+  return material.options?.find((option) => option.id === material.selectedOptionId)?.deliveryDays ?? material.options?.[0]?.deliveryDays ?? 0;
+}
+
+function affectedNodes(baseline: RenovationData, changed: RenovationData, changes: ScenarioChange[], baselineAnalysis: Analysis, scenarioAnalysis: Analysis) {
+  const changedIds = new Set(changes.map((change) => change.nodeId));
+  const baselineEntries = new Map(baselineAnalysis.schedule.map((entry) => [entry.nodeId, entry]));
+  const tasks = scenarioAnalysis.schedule.map((entry) => ({ id: entry.nodeId, name: changed.nodes.find((node) => node.id === entry.nodeId)!.name, scheduleDeltaDays: entry.earliestStart - (baselineEntries.get(entry.nodeId)?.earliestStart ?? entry.earliestStart) })).filter((node) => node.scheduleDeltaDays !== 0 || changedIds.has(node.id));
+  const materials = changes.filter((change) => changed.nodes.find((node) => node.id === change.nodeId)?.type === "MATERIAL").map((change) => ({
+    id: change.nodeId,
+    name: changed.nodes.find((node) => node.id === change.nodeId)!.name,
+    scheduleDeltaDays: selectedDeliveryDays(changed, change.nodeId) - selectedDeliveryDays(baseline, change.nodeId),
+  }));
+  return [...materials, ...tasks];
 }
 
 export function simulatePure(baseline: RenovationData, name: string, changes: ScenarioChange[]): ScenarioResult {
   const changed: RenovationData = structuredClone(baseline);
   applyChanges(changed, changes);
-  const changedIds = new Set(changes.map((change) => change.nodeId));
   const baselineAnalysis = analyze(baseline);
   const scenarioAnalysis = analyze(changed);
-  const baselineEntries = new Map(baselineAnalysis.schedule.map((entry) => [entry.nodeId, entry]));
-  const affectedNodes = scenarioAnalysis.schedule.map((entry) => ({ id: entry.nodeId, name: changed.nodes.find((node) => node.id === entry.nodeId)!.name, scheduleDeltaDays: entry.earliestStart - (baselineEntries.get(entry.nodeId)?.earliestStart ?? entry.earliestStart) })).filter((node) => node.scheduleDeltaDays !== 0 || changedIds.has(node.id));
+  const affected = affectedNodes(baseline, changed, changes, baselineAnalysis, scenarioAnalysis);
   const baselineCost = summary(baseline, baselineAnalysis).estimatedCost;
   const scenarioCost = summary(changed, scenarioAnalysis).estimatedCost;
   return {
@@ -66,8 +99,8 @@ export function simulatePure(baseline: RenovationData, name: string, changes: Sc
     baseline: { completionDate: baselineAnalysis.completionDate, estimatedCost: baselineCost },
     scenarioResult: { completionDate: scenarioAnalysis.completionDate, estimatedCost: scenarioCost },
     impact: { delayDays: scenarioAnalysis.durationDays - baselineAnalysis.durationDays, additionalCost: scenarioCost - baselineCost, criticalPathChanged: baselineAnalysis.criticalPath.join(",") !== scenarioAnalysis.criticalPath.join(",") },
-    affectedNodes,
-    affectedChain: affectedNodes.sort((left, right) => right.scheduleDeltaDays - left.scheduleDeltaDays).map((node) => node.id),
+    affectedNodes: affected,
+    affectedChain: [...affected].sort((left, right) => right.scheduleDeltaDays - left.scheduleDeltaDays).map((node) => node.id),
     graph: graphResponse(changed, scenarioAnalysis),
   };
 }
@@ -75,7 +108,6 @@ export function simulatePure(baseline: RenovationData, name: string, changes: Sc
 export async function simulate(baseline: RenovationData, name: string, changes: ScenarioChange[]): Promise<ScenarioResult> {
   const changed: RenovationData = structuredClone(baseline);
   applyChanges(changed, changes);
-  const changedIds = new Set(changes.map((change) => change.nodeId));
   const scenarioRuntime = new RenovationRuntime(changed, { role: "scenario" });
   try {
     await scenarioRuntime.ready();
@@ -83,8 +115,7 @@ export async function simulate(baseline: RenovationData, name: string, changes: 
     scenarioRuntime.deriveStatuses();
     const baselineAnalysis = analyze(baseline);
     const scenarioAnalysis = analyze(changed);
-    const baselineEntries = new Map(baselineAnalysis.schedule.map((entry) => [entry.nodeId, entry]));
-    const affectedNodes = scenarioAnalysis.schedule.map((entry) => ({ id: entry.nodeId, name: changed.nodes.find((node) => node.id === entry.nodeId)!.name, scheduleDeltaDays: entry.earliestStart - (baselineEntries.get(entry.nodeId)?.earliestStart ?? entry.earliestStart) })).filter((node) => node.scheduleDeltaDays !== 0 || changedIds.has(node.id));
+    const affected = affectedNodes(baseline, changed, changes, baselineAnalysis, scenarioAnalysis);
     const baselineCost = summary(baseline, baselineAnalysis).estimatedCost;
     const scenarioCost = summary(changed, scenarioAnalysis).estimatedCost;
     return {
@@ -92,8 +123,8 @@ export async function simulate(baseline: RenovationData, name: string, changes: 
       baseline: { completionDate: baselineAnalysis.completionDate, estimatedCost: baselineCost },
       scenarioResult: { completionDate: scenarioAnalysis.completionDate, estimatedCost: scenarioCost },
       impact: { delayDays: scenarioAnalysis.durationDays - baselineAnalysis.durationDays, additionalCost: scenarioCost - baselineCost, criticalPathChanged: baselineAnalysis.criticalPath.join(",") !== scenarioAnalysis.criticalPath.join(",") },
-      affectedNodes,
-      affectedChain: affectedNodes.sort((left, right) => right.scheduleDeltaDays - left.scheduleDeltaDays).map((node) => node.id),
+      affectedNodes: affected,
+      affectedChain: [...affected].sort((left, right) => right.scheduleDeltaDays - left.scheduleDeltaDays).map((node) => node.id),
       graph: { ...graphResponse(changed, scenarioAnalysis), runtime: scenarioRuntime.runtimeInfo() },
     };
   } finally {
