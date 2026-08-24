@@ -1,0 +1,4 @@
+node_modules/
+.env
+data/renovation.json
+web/dist/

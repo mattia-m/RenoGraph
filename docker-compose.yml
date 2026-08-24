@@ -1,0 +1,13 @@
+services:
+  renograph:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      WAVEBINDER_LICENSE: ${WAVEBINDER_LICENSE}
+      PORT: 3001
+    volumes:
+      - renograph-data:/app/data
+
+volumes:
+  renograph-data:
