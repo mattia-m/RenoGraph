@@ -212,9 +212,3 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
 - Browser automation, hosted deployment, screenshots and the final video are
   submission tasks rather than repository behavior.
 
-## Future Improvements
-
-See [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) for the complete
-plan matrix, including remaining work that is not part of the contest MVP.
-See [`CONTEST_REVIEW.md`](CONTEST_REVIEW.md) for the official rubric mapping
-and final submission checklist.
