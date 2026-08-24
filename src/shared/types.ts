@@ -115,6 +115,7 @@ export interface GraphResponse {
     eventCount: number;
     lastEvent?: string;
     dataPool: Record<string, unknown>;
+    canUndo?: boolean;
   };
 }
 

@@ -185,3 +185,22 @@ graph intelligence is polished.
    runtime in CI using a secret.
 3. Add PostgreSQL only if the contest rubric explicitly requires it.
 4. Record the demo once the visual graph layout and copy are stable.
+
+## Interactive Planning Sandbox
+
+A mostly read-only dashboard limits the opportunity to demonstrate Wavebinder
+reacting dynamically. The application should expose at least:
+
+- [x] Edit task duration, cost, name and description in a focused sidebar Edit mode.
+- [x] Change task and material status from Edit mode while preserving derived readiness.
+- [ ] Add a new task or material.
+- [x] Create and remove dependencies from Edit mode.
+- [x] Change material delivery time, availability, price and selected option.
+- [ ] Introduce an explicit manual blocker or delay directly.
+- [x] Undo local mutations and reset the demo.
+- [x] Keep demo changes in the local single-user session snapshot.
+- [x] Immediately recompute blockers, schedules, costs and the critical path.
+
+The next product increment is the sidebar Edit mode: select a node, change its
+fields or dependency inputs, and observe the Wavebinder data pool and downstream
+planning projections update immediately.
