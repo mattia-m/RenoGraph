@@ -7,9 +7,10 @@ originality. A database does not improve the core dependency demonstration.
 
 ## Decision
 
-Use a restart-safe canonical JSON snapshot for the single Casa Rossi project.
-Keep persistence isolated in `RenovationStore` so a PostgreSQL repository can be
-added later without changing graph analysis.
+Use restart-safe canonical JSON snapshots, with Casa Rossi as the seeded
+renovation and isolated state for projects created through the live portfolio.
+Keep persistence isolated in `RenovationStore` so a PostgreSQL repository can
+be added later without changing graph analysis.
 
 ## Consequences
 

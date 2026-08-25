@@ -35,14 +35,12 @@ becomes ready only after both facts are complete.
 | How are derived values implemented? | Use `CUSTOM_FUNCTION` loading actions registered as trusted function references in the constructor. |
 | How are subscriptions handled? | Nodes expose RxJS-compatible `subscribe`; updates are emitted after `.next(value)`. |
 | Can nodes depend on multiple nodes? | Yes. The spike has two dependencies feeding one derived node. |
-| Are async dependencies supported? | Yes at the loading-action layer through `GET`, `POST`, and related HTTP actions. Renograph will keep scheduling calculations synchronous and domain-owned. |
-| How are errors propagated? | The library represents loading failures as node state/value outcomes. Renograph must add domain-level validation and HTTP error mapping around it. |
-| What does the backend provide? | `wavebinder-autodb-back` generates CRUD REST APIs from configuration. It is not a substitute for Renograph scheduling or analysis logic. |
-| What does AutoDB provide? | Database-backed CRUD generation and Swagger support. It can be evaluated for persistence, but the first Renograph version should keep application intelligence explicit. |
+| Are async dependencies supported? | Yes at the loading-action layer through `GET`, `POST`, and related HTTP actions. Renograph keeps scheduling calculations synchronous and domain-owned. |
+| How are errors propagated? | The library represents loading failures as node state/value outcomes. Renograph adds domain validation and HTTP error mapping around it. |
 | Can separate graph instances exist? | Yes: each `new WaveBinder(...)` creates an independent runtime. This is suitable for isolated scenario graphs. |
-| Can graph state be cloned? | No dedicated clone API was found in the public API. Renograph should reconstruct a scenario binder from an immutable canonical snapshot. |
-| Can dependencies be added or removed dynamically? | No public dynamic dependency mutation API was found. Renograph should validate and rebuild a binder when graph topology changes. |
-| What cycle protections exist? | The public documentation does not promise cycle detection. Renograph must validate cycles before constructing or rebuilding a scheduling graph. |
+| Can graph state be cloned? | No dedicated clone API was found in the public API. Renograph reconstructs a scenario binder from an immutable canonical snapshot. |
+| Can dependencies be added or removed dynamically? | No public dynamic dependency mutation API was found. Renograph validates topology and rebuilds the binder when it changes. |
+| What cycle protections exist? | The public documentation does not promise cycle detection. Renograph validates cycles before constructing or rebuilding a scheduling graph. |
 | How is teardown handled? | `nukeNodes()` tears down nodes and stops periodic license checks. Services must call it for scenario and application lifecycle cleanup. |
 
 ## Architecture decision

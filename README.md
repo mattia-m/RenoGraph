@@ -57,28 +57,18 @@ export WAVEBINDER_LICENSE='<license JSON>'
 docker compose up --build
 ```
 
-## Demo Script
-
-1. Open Casa Rossi and inspect the full dependency graph.
-2. Select `Bathroom plumbing`; it is `READY` because demolition is complete.
-3. Start it, then mark it complete. Wavebinder updates downstream facts and Renograph derives the next readiness state.
-4. Select `Bathroom tiling` or `Install fixtures` to inspect direct dependencies and root blocker chains.
-5. Highlight the critical path to see the CPM result on the graph.
-6. Select a task or material and run a what-if duration/delivery delay. The result shows completion, cost, critical-path and affected-node deltas without mutating baseline state.
-7. Select a room to inspect its live structured material `LIST`, or select a material and mark it delivered to release dependent work.
-
-The complete repeatable runbook is in [`DEMO.md`](DEMO.md).
-
 ## Demo In 60 Seconds
 
-1. Select `Bathroom plumbing` and complete it.
-2. Watch downstream readiness update.
-3. Select a blocked task and inspect its root blocker.
-4. Highlight critical tasks.
-5. Simulate `Bathroom tiles +14 days`.
-6. Compare completion, cost and affected tasks.
-7. Open the runtime telemetry and show `COMPLEX`, `MULTI`, `LIST`, derived
-   nodes, subscriptions and propagation events.
+1. Select `Bathroom plumbing`, start it, then complete it with an actual duration.
+2. Watch downstream readiness and forecasts update.
+3. Select a blocked task and inspect its root blocker, then highlight the critical path.
+4. Simulate `Bathroom tiles +14 days` and compare completion, cost and affected tasks without changing the baseline.
+5. Enter **Edit mode**, change a field or dependency and watch the plan react.
+6. Add a task or material, introduce a blocker, then demonstrate undo and reset.
+7. Open the live inspector to show `COMPLEX`, `MULTI`, `LIST`, derived nodes, subscriptions and propagation events.
+8. Create another renovation and switch between isolated project graphs.
+
+The complete repeatable judge walkthrough is in [`DEMO.md`](DEMO.md).
 
 ## Architecture
 
@@ -189,28 +179,11 @@ requirements and alternative material choices.
 
 ## API
 
-Implemented endpoints include:
-
-```text
-GET  /api/health
-GET  /api/renovations/:id
-GET  /api/renovations/:id/graph
-GET  /api/renovations/:id/summary
-GET  /api/renovations/:id/ready
-GET  /api/renovations/:id/blocked
-GET  /api/renovations/:id/critical-path
-GET  /api/renovations/:id/nodes/:nodeId
-GET  /api/renovations/:id/nodes/:nodeId/blockers
-PATCH /api/renovations/:id/nodes/:nodeId
-POST /api/renovations/:id/nodes/:nodeId/start
-POST /api/renovations/:id/nodes/:nodeId/complete
-POST /api/renovations/:id/nodes/:nodeId/block
-POST /api/renovations/:id/scenarios
-POST /api/renovations/:id/relationships
-DELETE /api/renovations/:id/relationships/:relationshipId
-GET  /api/renovations/:id/runtime/events
-POST /api/renovations/:id/nodes/:nodeId/select-option
-```
+The REST API supports project creation and discovery; graph, schedule, blocker,
+critical-path and runtime inspection; node and relationship mutation;
+professional, contractor, purchase and document workflows; isolated scenarios;
+and undo/reset. Renovation operations are scoped below
+`/api/renovations/:id`, keeping project graphs isolated.
 
 ## Testing
 
@@ -255,6 +228,6 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
 - The local multi-project persistence layer is JSON rather than PostgreSQL.
 - Project runtimes are currently created eagerly at startup. A lazy or bounded
   runtime cache is intentionally deferred while the portfolio remains a small
-  local contest demo; see `IMPLEMENTATION_STATUS.md` before expanding its scale.
-- Browser automation, hosted deployment, screenshots and the final video are
-  submission tasks rather than repository behavior.
+  local contest demo.
+- Hosted deployment and the final video are submission packaging tasks rather
+  than repository behavior.

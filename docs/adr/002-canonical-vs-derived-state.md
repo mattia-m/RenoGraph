@@ -13,5 +13,5 @@ derived readiness, material availability and task `COMPLEX` state at startup.
 ## Consequences
 
 There is no stale authoritative `READY` flag. A dependency change produces a new
-derived result. The current single-project JSON store is intentionally smaller
-than a production database.
+derived result. The local JSON portfolio is intentionally smaller than a
+production database.

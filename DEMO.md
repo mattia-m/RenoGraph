@@ -34,16 +34,16 @@ Open `http://localhost:5173`.
 18. Select a material option and verify the `MULTI` choice changes cost,
     availability, delivery constraint and dependent state.
 19. Select a room and inspect real `LIST` → `COMPLEX` material values.
-20. Add or remove a relationship through the API if demonstrating topology:
-
-```bash
-curl -X POST http://localhost:3001/api/renovations/casa-rossi/relationships \
-  -H 'Content-Type: application/json' \
-  -d '{"fromNodeId":"bathroom-fixtures","toNodeId":"bathroom-tiling","type":"DEPENDS_ON"}'
-```
-
+20. Enter **Edit mode** and add or remove a dependency visually.
 21. Verify runtime rebuild telemetry increments and derived state is stable.
-22. Use `Reset demo` to restore the canonical dataset.
+22. Complete a running task with an actual duration different from its plan;
+    inspect the variance and downstream forecast.
+23. Introduce a manual blocker, undo it, then use `Reset demo` to restore the
+    canonical dataset.
+24. Create another renovation with **New project**, switch projects and verify
+    their graphs and histories remain isolated.
+25. Show a professional conflict and inspect a linked purchase, document or
+    contractor workflow.
 
 ## Strong Judge Moments
 
@@ -76,9 +76,9 @@ recent propagation events
 > Renograph owns renovation semantics, CPM scheduling, costs and scenario
 > comparison.
 
-## Browser Pass
+## Recording Checklist
 
-Repeat the core flow in Chrome and Firefox. If available, repeat it in Safari.
+Before recording, repeat the core flow in Chrome and Firefox. If available, repeat it in Safari.
 Check page reload, graph pan/zoom, scenario reset, material selection and the
 mobile layout. Record any browser-specific issue before recording the final
 video.
