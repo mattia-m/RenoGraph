@@ -340,12 +340,14 @@ export function schedule(data: RenovationData): ScheduleEntry[] {
   const entries = new Map<string, ScheduleEntry>();
   const predecessors = (id: string) => data.relationships.filter((item) => item.type === "DEPENDS_ON" && item.fromNodeId === id).map((item) => item.toNodeId);
   const successors = (id: string) => data.relationships.filter((item) => item.type === "DEPENDS_ON" && item.toNodeId === id).map((item) => item.fromNodeId);
+  const resourceSuccessors = new Map<string, Set<string>>();
   const materialConstraints = (id: string) => data.relationships.filter((item) => item.type === "REQUIRES_MATERIAL" && item.fromNodeId === id).map((item) => {
     const material = data.nodes.find((node) => node.id === item.toNodeId && node.type === "MATERIAL");
     const deliveryDays = material?.status === "COMPLETED" ? 0 : (material ? selectedMaterialOption(material)?.deliveryDays ?? 0 : 0);
     return { materialId: item.toNodeId, deliveryDays };
   });
   const professionalFreeDay = new Map((data.professionals ?? []).map((professional) => [professional.id, professional.availableFromDay]));
+  const previousTaskByProfessional = new Map<string, string>();
   for (const task of tasks) {
     const previous = predecessors(task.id).map((id) => entries.get(id)!).filter(Boolean);
     const constraints = materialConstraints(task.id);
@@ -357,13 +359,23 @@ export function schedule(data: RenovationData): ScheduleEntry[] {
     const earliestStart = Math.max(dependencyReadyDay, resourceReadyDay);
     const effectiveDurationDays = effectiveTaskDuration(task);
     const earliestFinish = earliestStart + effectiveDurationDays;
-    professionalIds.forEach((id) => professionalFreeDay.set(id, earliestFinish));
+    professionalIds.forEach((id) => {
+      const previousTaskId = previousTaskByProfessional.get(id);
+      if (previousTaskId) {
+        const linked = resourceSuccessors.get(previousTaskId) ?? new Set<string>();
+        linked.add(task.id);
+        resourceSuccessors.set(previousTaskId, linked);
+      }
+      previousTaskByProfessional.set(id, task.id);
+      professionalFreeDay.set(id, earliestFinish);
+    });
     entries.set(task.id, { nodeId: task.id, earliestStart, earliestFinish, latestStart: 0, latestFinish: 0, slack: 0, critical: false, materialReadyDay, materialConstraints: constraints, effectiveDurationDays, resourceReadyDay, resourceDelayDays: Math.max(0, resourceReadyDay - dependencyReadyDay), professionalIds });
   }
   const projectDuration = Math.max(0, ...[...entries.values()].map((entry) => entry.earliestFinish));
   for (const task of [...tasks].reverse()) {
     const entry = entries.get(task.id)!;
-    const next = successors(task.id).map((id) => entries.get(id)!).filter(Boolean);
+    const nextIds = new Set([...successors(task.id), ...(resourceSuccessors.get(task.id) ?? [])]);
+    const next = [...nextIds].map((id) => entries.get(id)!).filter(Boolean);
     entry.latestFinish = next.length ? Math.min(...next.map((candidate) => candidate.latestStart)) : projectDuration;
     entry.latestStart = entry.latestFinish - effectiveTaskDuration(task);
     entry.slack = entry.latestStart - entry.earliestStart;

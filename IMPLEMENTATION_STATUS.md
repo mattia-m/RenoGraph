@@ -142,13 +142,22 @@ These items are not falsely marked complete.
 - [ ] PostgreSQL schema and migrations.
 - [ ] Repository abstraction backed by PostgreSQL.
 - [ ] Full node CRUD endpoints.
-- [ ] CI workflow with a repository-secret Wavebinder license.
+- CI workflow intentionally omitted for this solo contest project; verification is run locally before submission.
 - [ ] Scenario persistence tables and saved scenario history.
 - [ ] Durable event history.
 - [ ] Optimistic concurrency/versioning.
 
 The current JSON portfolio is restart-safe for the demo and user-created
 renovations and is deliberately sufficient for the contest MVP.
+
+### Deferred Runtime Lifecycle Work
+
+- [ ] Lazily instantiate or bounded-cache project runtimes instead of retaining
+  one Wavebinder instance for every persisted renovation at server startup.
+  The contest license has a finite instance allowance, so this must be addressed
+  before the portfolio is allowed to grow beyond a small local demo collection.
+  Until then, keep the number of saved renovation projects comfortably below the
+  license limit and restart after deleting unwanted local project snapshots.
 
 ### Analysis
 

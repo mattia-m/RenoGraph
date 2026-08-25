@@ -36,6 +36,19 @@ test("a shared professional serializes parallel work and exposes the crew delay"
   assert.equal(result.schedule.find((entry) => entry.nodeId === "C")?.earliestStart, 4);
   assert.equal(result.resourceConflicts[0]?.delayedTaskId, "C");
   assert.equal(result.resourceConflicts[0]?.delayDays, 3);
+  assert.equal(result.schedule.find((entry) => entry.nodeId === "B")?.critical, true);
+  assert.equal(result.schedule.find((entry) => entry.nodeId === "C")?.critical, true);
+  assert.deepEqual(result.criticalPath, ["A", "B", "C"]);
+});
+
+test("resource ordering participates in downstream critical-path calculation", () => {
+  const data = graph([["B", "A"], ["C", "A"], ["D", "C"]], { A: 1, B: 4, C: 2, D: 1 });
+  data.professionals = [{ id: "p1", name: "Shared crew", trade: "General", availableFromDay: 0 }];
+  data.assignments = [{ id: "a1", taskId: "B", professionalId: "p1" }, { id: "a2", taskId: "C", professionalId: "p1" }];
+  const result = analyze(data);
+  assert.equal(result.durationDays, 8);
+  assert.deepEqual(result.criticalPath, ["A", "B", "C", "D"]);
+  assert.equal(result.schedule.every((entry) => entry.slack >= 0), true);
 });
 
 test("professional availability constrains the assigned task", () => {

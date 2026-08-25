@@ -237,5 +237,8 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
 - HTTP loading actions are not used yet; material options are deterministic
   custom-function data so the demo remains offline-stable.
 - The local multi-project persistence layer is JSON rather than PostgreSQL.
+- Project runtimes are currently created eagerly at startup. A lazy or bounded
+  runtime cache is intentionally deferred while the portfolio remains a small
+  local contest demo; see `IMPLEMENTATION_STATUS.md` before expanding its scale.
 - Browser automation, hosted deployment, screenshots and the final video are
   submission tasks rather than repository behavior.

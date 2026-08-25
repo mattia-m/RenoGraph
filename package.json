@@ -11,6 +11,8 @@
     "dev:api": "tsx watch src/server/index.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "build": "tsc --noEmit && vite build --config web/vite.config.ts",
+    "format": "prettier --write \"web/src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"web/src/**/*.{ts,tsx,css}\"",
     "start": "tsx src/server/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/**/*.test.ts"
@@ -24,13 +26,14 @@
     "wave-binder": "0.0.2"
   },
   "devDependencies": {
-    "@types/node": "^22.15.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.3",
+    "@types/node": "^22.15.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^5.0.2",
     "concurrently": "^9.2.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vite": "^7.1.3"
