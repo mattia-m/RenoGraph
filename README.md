@@ -9,6 +9,22 @@ Rossi renovation. It uses Wavebinder as the live reactive dependency runtime,
 while renovation-specific scheduling, critical-path analysis, costing and
 scenario comparison remain explicit Renograph domain logic.
 
+## Visual Tour
+
+![Renograph dashboard showing the Casa Rossi dependency graph, project forecast, critical path, ready work and live Wavebinder runtime metrics](docs/media/renograph-dashboard.jpg)
+
+The main workspace combines the renovation graph with projected completion,
+cost, critical-path signals, blockers and live Wavebinder runtime telemetry.
+
+| Reactive dependency inspection | Resource and operational workflows |
+| --- | --- |
+| ![A critical bathroom tiling task selected with blockers, dependency inputs and its structured Wavebinder data-pool state](docs/media/renograph-wavebinder-inspector.jpg) | ![The project operations workspace showing professional availability, crew conflicts, contractors, purchases and document tracking](docs/media/renograph-operations.jpg) |
+| Select any task to inspect its direct/root blockers and live `COMPLEX` forecast inputs. | Shared professionals constrain the schedule while purchasing and paperwork remain editable in the local project workflow. |
+
+Every value shown here comes from the runnable local application rather than a
+design mock-up. The repeatable interaction sequence is documented below and in
+[`DEMO.md`](DEMO.md).
+
 ## Quick Start
 
 Requirements: Node.js 20+ and a valid Wavebinder license.
