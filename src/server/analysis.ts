@@ -10,7 +10,8 @@ function addDays(date: string, days: number): string {
 export function analyze(data: RenovationData): Analysis {
   const entries = schedule(data);
   const durationDays = Math.max(0, ...entries.map((entry) => entry.earliestFinish));
-  return { schedule: entries, durationDays, criticalPath: entries.filter((entry) => entry.critical).sort((a, b) => a.earliestStart - b.earliestStart).map((entry) => entry.nodeId), completionDate: addDays(data.renovation.startDate, durationDays) };
+  const resourceConflicts = entries.flatMap((entry) => entry.resourceDelayDays > 0 ? entry.professionalIds.map((professionalId) => ({ professionalId, taskIds: (data.assignments ?? []).filter((assignment) => assignment.professionalId === professionalId).map((assignment) => assignment.taskId), delayedTaskId: entry.nodeId, delayDays: entry.resourceDelayDays })) : []);
+  return { schedule: entries, durationDays, criticalPath: entries.filter((entry) => entry.critical).sort((a, b) => a.earliestStart - b.earliestStart).map((entry) => entry.nodeId), completionDate: addDays(data.renovation.startDate, durationDays), resourceConflicts };
 }
 
 export function summary(data: RenovationData, analysis = analyze(data)): Summary {

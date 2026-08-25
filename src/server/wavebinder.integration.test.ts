@@ -23,6 +23,16 @@ test("licensed Wavebinder runtime propagates multi-source renovation readiness",
   assert.equal(runtime.taskState("bathroom-plumbing")?.status, "READY");
   assert.equal(runtime.isReady("bathroom-plumbing"), true);
   assert.equal(runtime.isReady("bathroom-waterproofing"), false);
+  const plumbing = data.nodes.find((node) => node.id === "bathroom-plumbing")!;
+  plumbing.manualBlocker = "Permit hold";
+  plumbing.delayDays = 2;
+  runtime.setFact(plumbing.id, plumbing.status);
+  assert.equal(runtime.isReady(plumbing.id), false);
+  assert.equal(runtime.taskState(plumbing.id)?.manuallyBlocked, true);
+  assert.equal(runtime.taskState(plumbing.id)?.effectiveDuration, 6);
+  plumbing.manualBlocker = undefined;
+  runtime.setFact(plumbing.id, plumbing.status);
+  assert.equal(runtime.isReady(plumbing.id), true);
   runtime.selectMaterialOption("bathroom-tiles", "express");
   assert.equal((runtime.binder.getNodeByName("bathroom-tiles__option").getNodeValue() as { id: string }).id, "express");
   assert.ok(runtime.recentEvents().length > 0);

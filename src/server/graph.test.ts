@@ -28,6 +28,23 @@ test("critical path leaves slack on the shorter parallel branch", () => {
   assert.equal(result.find((entry) => entry.nodeId === "C")?.slack, 2);
 });
 
+test("a shared professional serializes parallel work and exposes the crew delay", () => {
+  const data = graph([["B", "A"], ["C", "A"]], { A: 1, B: 3, C: 2 });
+  data.professionals = [{ id: "p1", name: "One plumber", trade: "Plumbing", availableFromDay: 0 }];
+  data.assignments = [{ id: "a1", taskId: "B", professionalId: "p1" }, { id: "a2", taskId: "C", professionalId: "p1" }];
+  const result = analyze(data);
+  assert.equal(result.schedule.find((entry) => entry.nodeId === "C")?.earliestStart, 4);
+  assert.equal(result.resourceConflicts[0]?.delayedTaskId, "C");
+  assert.equal(result.resourceConflicts[0]?.delayDays, 3);
+});
+
+test("professional availability constrains the assigned task", () => {
+  const data = graph([["B", "A"]], { A: 1, B: 2 });
+  data.professionals = [{ id: "p1", name: "Late electrician", trade: "Electrical", availableFromDay: 5 }];
+  data.assignments = [{ id: "a1", taskId: "B", professionalId: "p1" }];
+  assert.equal(schedule(data).find((entry) => entry.nodeId === "B")?.earliestStart, 5);
+});
+
 test("blocked explanations expose direct and root blockers", () => {
   const data = graph([["B", "A"], ["C", "B"]], { A: 1, B: 1, C: 1 });
   assert.deepEqual(blockers(data, "C"), { nodeId: "C", status: "BLOCKED", blockedBy: ["B"], rootBlockers: ["A"] });
@@ -129,6 +146,16 @@ test("selected material delivery constrains task scheduling", () => {
   assert.deepEqual(tiling.materialConstraints, [{ materialId: "bathroom-tiles", deliveryDays: 14 }]);
   material.status = "COMPLETED";
   assert.equal(schedule(data).find((entry) => entry.nodeId === "bathroom-tiling")?.materialReadyDay, 0);
+});
+
+test("actual duration and direct delay reforecast downstream work", () => {
+  const data = graph([["B", "A"]], { A: 10, B: 2 }, { A: "COMPLETED" });
+  const taskA = data.nodes.find((node) => node.id === "A")!;
+  taskA.actualDurationDays = 3;
+  assert.equal(schedule(data).find((entry) => entry.nodeId === "B")?.earliestStart, 3);
+  taskA.delayDays = 4;
+  assert.equal(schedule(data).find((entry) => entry.nodeId === "B")?.earliestStart, 7);
+  assert.equal(schedule(data).find((entry) => entry.nodeId === "A")?.effectiveDurationDays, 7);
 });
 
 test("material delivery scenarios move dependent work without mutating baseline", () => {

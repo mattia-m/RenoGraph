@@ -91,5 +91,10 @@ export function createDemoData(): RenovationData {
     renovation: { id: renovationId, name: "Casa Rossi", startDate: "2026-09-08", targetEndDate: "2026-09-30", budget: 25000, status: "IN_PROGRESS" },
     nodes,
     relationships,
+    professionals: [{ id: "pro-marco", name: "Marco Bianchi", trade: "Plumber", availableFromDay: 1 }, { id: "pro-elena", name: "Elena Verdi", trade: "Electrician", availableFromDay: 0 }],
+    assignments: [{ id: "assign-bath-plumbing", taskId: "bathroom-plumbing", professionalId: "pro-marco" }, { id: "assign-kitchen-plumbing", taskId: "kitchen-plumbing", professionalId: "pro-marco" }, { id: "assign-bath-electrical", taskId: "bathroom-electrical", professionalId: "pro-elena" }, { id: "assign-kitchen-electrical", taskId: "kitchen-electrical", professionalId: "pro-elena" }],
+    contractors: [{ id: "contractor-rossi-impianti", name: "Rossi Impianti", trade: "Plumbing and heating", contact: "Local contractor" }],
+    purchases: [{ id: "purchase-bathroom-tiles", description: "Bathroom tile order", status: "REQUESTED", amount: 500, materialId: "bathroom-tiles", contractorId: "contractor-rossi-impianti" }],
+    documents: [{ id: "document-tile-quote", name: "Bathroom tile quote", kind: "QUOTE", nodeId: "bathroom-tiles", reference: "Q-2026-014" }],
   };
 }

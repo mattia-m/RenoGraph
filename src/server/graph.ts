@@ -10,6 +10,15 @@ const progressName = (id: string) => `${id}__in_progress`;
 const stateName = (id: string) => `${id}__state`;
 const optionName = (id: string) => `${id}__option`;
 const roomMaterialsName = (id: string) => `${id}__materials`;
+const plannedDurationName = (id: string) => `${id}__planned_duration`;
+const actualDurationName = (id: string) => `${id}__actual_duration`;
+const delayName = (id: string) => `${id}__delay_days`;
+const manualClearName = (id: string) => `${id}__manual_clear`;
+
+export function effectiveTaskDuration(task: RenovationNode): number {
+  const measured = task.status === "COMPLETED" && task.actualDurationDays !== undefined ? task.actualDurationDays : (task.durationDays ?? 0);
+  return measured + (task.delayDays ?? 0);
+}
 
 function selectedMaterialOption(material: RenovationNode) {
   return material.options?.find((option) => option.id === material.selectedOptionId) ?? material.options?.[0];
@@ -83,7 +92,15 @@ export class RenovationRuntime {
         la: { type: "USER_SELECTION" },
         defaultValue: node.status === "IN_PROGRESS" ? 1 : 0,
         dep: [],
-      }, ...(node.type === "MATERIAL" ? [{
+      }, ...(node.type === "TASK" ? [{
+        name: plannedDurationName(node.id), type: "SINGLE", path: `/${node.id}/plannedDuration`, la: { type: "USER_SELECTION" }, defaultValue: node.durationDays ?? 0, dep: [],
+      }, {
+        name: actualDurationName(node.id), type: "SINGLE", path: `/${node.id}/actualDuration`, la: { type: "USER_SELECTION" }, defaultValue: node.actualDurationDays ?? null, dep: [],
+      }, {
+        name: delayName(node.id), type: "SINGLE", path: `/${node.id}/delayDays`, la: { type: "USER_SELECTION" }, defaultValue: node.delayDays ?? 0, dep: [],
+      }, {
+        name: manualClearName(node.id), type: "SINGLE", path: `/${node.id}/manualClear`, la: { type: "USER_SELECTION" }, defaultValue: node.manualBlocker ? 0 : 1, dep: [],
+      }] : []), ...(node.type === "MATERIAL" ? [{
         name: optionName(node.id),
         type: "MULTI",
         path: `/${node.id}/option`,
@@ -113,10 +130,19 @@ export class RenovationRuntime {
           { nodeName: completionName(node.id), parameterName: "completed", isOptional: false, onUpdate: true },
           { nodeName: progressName(node.id), parameterName: "inProgress", isOptional: false, onUpdate: true },
           { nodeName: readyName(node.id), parameterName: "ready", isOptional: false, onUpdate: true },
+          { nodeName: plannedDurationName(node.id), parameterName: "plannedDuration", isOptional: false, onUpdate: true },
+          { nodeName: actualDurationName(node.id), parameterName: "actualDuration", isOptional: true, onUpdate: true },
+          { nodeName: delayName(node.id), parameterName: "delayDays", isOptional: false, onUpdate: true },
+          { nodeName: manualClearName(node.id), parameterName: "manualClear", isOptional: false, onUpdate: true },
         ],
         protos: [
           { name: "status", type: "SINGLE", path: "/status", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "duration", type: "SINGLE", path: "/duration", la: { type: "USER_SELECTION" }, dep: [] },
+          { name: "plannedDuration", type: "SINGLE", path: "/plannedDuration", la: { type: "USER_SELECTION" }, dep: [] },
+          { name: "actualDuration", type: "SINGLE", path: "/actualDuration", la: { type: "USER_SELECTION" }, dep: [] },
+          { name: "delayDays", type: "SINGLE", path: "/delayDays", la: { type: "USER_SELECTION" }, dep: [] },
+          { name: "effectiveDuration", type: "SINGLE", path: "/effectiveDuration", la: { type: "USER_SELECTION" }, dep: [] },
+          { name: "durationVariance", type: "SINGLE", path: "/durationVariance", la: { type: "USER_SELECTION" }, dep: [] },
+          { name: "manuallyBlocked", type: "SINGLE", path: "/manuallyBlocked", la: { type: "USER_SELECTION" }, dep: [] },
           { name: "estimatedCost", type: "SINGLE", path: "/estimatedCost", la: { type: "USER_SELECTION" }, dep: [] },
         ],
       }] : [])]),
@@ -159,9 +185,14 @@ export class RenovationRuntime {
       implementation: () => material.options ?? [],
     })), ...taskNodes.map((task) => ({
       name: `state_${task.id}`,
-      implementation: (completed: number, inProgress: number, ready: number) => ({
+      implementation: (completed: number, inProgress: number, ready: number, plannedDuration: number, actualDuration: number | null, delayDays: number, manualClear: number) => ({
         status: completed === 1 ? "COMPLETED" : inProgress === 1 ? "IN_PROGRESS" : ready === 1 ? "READY" : "BLOCKED",
-        duration: task.durationDays ?? 0,
+        plannedDuration,
+        actualDuration,
+        delayDays,
+        effectiveDuration: (completed === 1 && actualDuration !== null ? actualDuration : plannedDuration) + delayDays,
+        durationVariance: actualDuration === null ? delayDays : actualDuration - plannedDuration + delayDays,
+        manuallyBlocked: manualClear === 0,
         estimatedCost: task.estimatedCost ?? 0,
       }),
     }))];
@@ -183,6 +214,7 @@ export class RenovationRuntime {
     if (result.length === 0) {
       result.push({ nodeName: "__project_start", parameterName: "projectStart", isOptional: false, onUpdate: true });
     }
+    if (node.type === "TASK") result.push({ nodeName: manualClearName(node.id), parameterName: "manualClear", isOptional: false, onUpdate: true });
     return result;
   }
 
@@ -210,6 +242,12 @@ export class RenovationRuntime {
     const fact = node.type === "MATERIAL" ? deliveredName(nodeId) : completionName(nodeId);
     this.binder.getNodeByName(fact).next(status === "COMPLETED" ? 1 : 0);
     if (node.type === "TASK") this.binder.getNodeByName(progressName(nodeId)).next(status === "IN_PROGRESS" ? 1 : 0);
+    if (node.type === "TASK") {
+      this.binder.getNodeByName(plannedDurationName(nodeId)).next(node.durationDays ?? 0);
+      this.binder.getNodeByName(actualDurationName(nodeId)).next(node.actualDurationDays ?? null);
+      this.binder.getNodeByName(delayName(nodeId)).next(node.delayDays ?? 0);
+      this.binder.getNodeByName(manualClearName(nodeId)).next(node.manualBlocker ? 0 : 1);
+    }
   }
 
   isReady(nodeId: string): boolean {
@@ -307,20 +345,27 @@ export function schedule(data: RenovationData): ScheduleEntry[] {
     const deliveryDays = material?.status === "COMPLETED" ? 0 : (material ? selectedMaterialOption(material)?.deliveryDays ?? 0 : 0);
     return { materialId: item.toNodeId, deliveryDays };
   });
+  const professionalFreeDay = new Map((data.professionals ?? []).map((professional) => [professional.id, professional.availableFromDay]));
   for (const task of tasks) {
     const previous = predecessors(task.id).map((id) => entries.get(id)!).filter(Boolean);
     const constraints = materialConstraints(task.id);
     const materialReadyDay = Math.max(0, ...constraints.map((constraint) => constraint.deliveryDays));
     const predecessorReadyDay = previous.length ? Math.max(...previous.map((entry) => entry.earliestFinish)) : 0;
-    const earliestStart = Math.max(predecessorReadyDay, materialReadyDay);
-    entries.set(task.id, { nodeId: task.id, earliestStart, earliestFinish: earliestStart + (task.durationDays ?? 0), latestStart: 0, latestFinish: 0, slack: 0, critical: false, materialReadyDay, materialConstraints: constraints });
+    const professionalIds = (data.assignments ?? []).filter((assignment) => assignment.taskId === task.id).map((assignment) => assignment.professionalId);
+    const resourceReadyDay = Math.max(0, ...professionalIds.map((id) => professionalFreeDay.get(id) ?? 0));
+    const dependencyReadyDay = Math.max(predecessorReadyDay, materialReadyDay);
+    const earliestStart = Math.max(dependencyReadyDay, resourceReadyDay);
+    const effectiveDurationDays = effectiveTaskDuration(task);
+    const earliestFinish = earliestStart + effectiveDurationDays;
+    professionalIds.forEach((id) => professionalFreeDay.set(id, earliestFinish));
+    entries.set(task.id, { nodeId: task.id, earliestStart, earliestFinish, latestStart: 0, latestFinish: 0, slack: 0, critical: false, materialReadyDay, materialConstraints: constraints, effectiveDurationDays, resourceReadyDay, resourceDelayDays: Math.max(0, resourceReadyDay - dependencyReadyDay), professionalIds });
   }
   const projectDuration = Math.max(0, ...[...entries.values()].map((entry) => entry.earliestFinish));
   for (const task of [...tasks].reverse()) {
     const entry = entries.get(task.id)!;
     const next = successors(task.id).map((id) => entries.get(id)!).filter(Boolean);
     entry.latestFinish = next.length ? Math.min(...next.map((candidate) => candidate.latestStart)) : projectDuration;
-    entry.latestStart = entry.latestFinish - (task.durationDays ?? 0);
+    entry.latestStart = entry.latestFinish - effectiveTaskDuration(task);
     entry.slack = entry.latestStart - entry.earliestStart;
     entry.critical = entry.slack === 0;
   }

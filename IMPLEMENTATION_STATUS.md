@@ -147,22 +147,22 @@ These items are not falsely marked complete.
 - [ ] Durable event history.
 - [ ] Optimistic concurrency/versioning.
 
-The current JSON snapshot is restart-safe for the single demo renovation and is
-deliberately sufficient for the contest MVP.
+The current JSON portfolio is restart-safe for the demo and user-created
+renovations and is deliberately sufficient for the contest MVP.
 
 ### Analysis
 
 - [ ] Working-day calendar, weekends and holidays.
 - [ ] Multiple explicit critical-path result presentation when paths tie.
 - [ ] Actual-cost editing UI.
-- [ ] Resource/professional constraints.
+- [x] Resource/professional constraints, including trade availability, task assignment, crew leveling and visible conflict delays.
 
 ### Product Scope
 
 - [ ] Authentication and authorization.
-- [ ] Multiple renovation projects.
+- [x] Create, persist, switch and reset multiple renovation projects live using the current graph model.
 - [ ] Collaboration, comments and notifications.
-- [ ] Purchases, documents and contractor workflows.
+- [x] Local purchase status, document-reference and contractor workflows with undo support.
 - [ ] Mobile/native application.
 - [ ] Microservices, Kubernetes and event streaming.
 
@@ -193,14 +193,19 @@ reacting dynamically. The application should expose at least:
 
 - [x] Edit task duration, cost, name and description in a focused sidebar Edit mode.
 - [x] Change task and material status from Edit mode while preserving derived readiness.
-- [ ] Add a new task or material.
+- [x] Add a new task or material and instantiate it in the live runtime.
 - [x] Create and remove dependencies from Edit mode.
 - [x] Change material delivery time, availability, price and selected option.
-- [ ] Introduce an explicit manual blocker or delay directly.
+- [x] Introduce an explicit manual blocker or delay directly.
 - [x] Undo local mutations and reset the demo.
 - [x] Keep demo changes in the local single-user session snapshot.
 - [x] Immediately recompute blockers, schedules, costs and the critical path.
 
-The next product increment is the sidebar Edit mode: select a node, change its
-fields or dependency inputs, and observe the Wavebinder data pool and downstream
-planning projections update immediately.
+The sidebar Edit mode lets a user select a node, change its fields or dependency
+inputs, and observe the Wavebinder data pool and downstream planning projections
+update immediately.
+
+Task completion now captures actual duration and uses it in downstream schedule
+forecasting. Task state is a reactive Wavebinder `COMPLEX` projection combining
+planned duration, actual duration, direct delay, variance, manual-clear state,
+derived readiness, status and cost through `CUSTOM_FUNCTION` dependencies.
