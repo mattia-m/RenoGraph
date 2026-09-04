@@ -1,4 +1,4 @@
-# Renograph Demo Runbook
+# Renograph Demo Script
 
 This is the deterministic contest demo. Start from a clean baseline before
 each run:
@@ -10,7 +10,26 @@ npm run dev
 
 Open `http://localhost:5173`.
 
-## Core Flow
+## Recorded Walkthrough
+
+The repository includes a
+[95-second narrated contest demo](renograph-contest-demo.mp4) captured from the
+runnable Casa Rossi application.
+
+| Time | Scene |
+| --- | --- |
+| 0:00 | Product overview, progress, cost, projected completion and critical path |
+| 0:10 | Live Wavebinder graph and runtime counters |
+| 0:20 | Bathroom tiling blockers, reactive inputs and structured task state |
+| 0:30 | Bathroom tile `MULTI` options and live data pool |
+| 0:41 | Isolated material delivery-delay scenario setup |
+| 0:48 | Completion, cost and affected-chain impact |
+| 0:57 | Baseline-versus-scenario graph comparison |
+| 1:04 | Bathroom `LIST` → `COMPLEX` material bundle |
+| 1:14 | Professionals, resource conflicts, purchases and documents |
+| 1:25 | Architecture summary |
+
+## Full Interactive Judge Flow
 
 1. Open Casa Rossi.
 2. Inspect the graph, relationships and Wavebinder telemetry. Select a task to
@@ -76,9 +95,10 @@ recent propagation events
 > Renograph owns renovation semantics, CPM scheduling, costs and scenario
 > comparison.
 
-## Recording Checklist
+## Re-recording Checklist
 
-Before recording, repeat the core flow in Chrome and Firefox. If available, repeat it in Safari.
+Before recording, repeat the full interactive flow in Chrome and Firefox. If
+available, repeat it in Safari.
 Check page reload, graph pan/zoom, scenario reset, material selection and the
 mobile layout. Record any browser-specific issue before recording the final
 video.

@@ -9,6 +9,16 @@ Rossi renovation. It uses Wavebinder as the live reactive dependency runtime,
 while renovation-specific scheduling, critical-path analysis, costing and
 scenario comparison remain explicit Renograph domain logic.
 
+## Demo
+
+- [Watch the 95-second narrated contest demo](Demo/renograph-contest-demo.mp4)
+- [Follow the complete demo script and judge runbook](Demo/demo-script.md)
+
+The video is captured from the runnable Casa Rossi application. It demonstrates
+the live Wavebinder graph, critical-path highlighting, blocker explanations,
+material choices, an isolated delivery-delay scenario, structured room material
+lists and the operational workflow.
+
 ## Visual Tour
 
 ![Renograph dashboard showing the Casa Rossi dependency graph, project forecast, critical path, ready work and live Wavebinder runtime metrics](docs/media/renograph-dashboard.jpg)
@@ -23,7 +33,7 @@ cost, critical-path signals, blockers and live Wavebinder runtime telemetry.
 
 Every value shown here comes from the runnable local application rather than a
 design mock-up. The repeatable interaction sequence is documented below and in
-[`DEMO.md`](DEMO.md).
+the [`Demo/` package](Demo/).
 
 ## Quick Start
 
@@ -57,18 +67,20 @@ export WAVEBINDER_LICENSE='<license JSON>'
 docker compose up --build
 ```
 
-## Demo In 60 Seconds
+## Demo Flow
 
-1. Select `Bathroom plumbing`, start it, then complete it with an actual duration.
-2. Watch downstream readiness and forecasts update.
-3. Select a blocked task and inspect its root blocker, then highlight the critical path.
-4. Simulate `Bathroom tiles +14 days` and compare completion, cost and affected tasks without changing the baseline.
-5. Enter **Edit mode**, change a field or dependency and watch the plan react.
-6. Add a task or material, introduce a blocker, then demonstrate undo and reset.
-7. Open the live inspector to show `COMPLEX`, `MULTI`, `LIST`, derived nodes, subscriptions and propagation events.
-8. Create another renovation and switch between isolated project graphs.
+1. Read the project forecast and inspect the live Wavebinder runtime counters.
+2. Highlight the critical path and select `Bathroom tiling`.
+3. Inspect its direct dependencies, root blockers and structured live task state.
+4. Select `Bathroom tiles` to compare its `MULTI` delivery and cost choices.
+5. Simulate a 14-day delivery delay and €350 cost increase in an isolated runtime.
+6. Compare baseline and scenario completion, cost and affected tasks.
+7. Select the bathroom to inspect its `LIST` → `COMPLEX` material bundle.
+8. Open the operations workspace to inspect resource conflicts, purchases and documents.
 
-The complete repeatable judge walkthrough is in [`DEMO.md`](DEMO.md).
+The [narrated video](Demo/renograph-contest-demo.mp4) follows this sequence. The
+[demo script](Demo/demo-script.md) also contains the longer interactive flow for
+a live jury walkthrough.
 
 ## Architecture
 
@@ -122,9 +134,6 @@ tasks / materials / relationships
 | Room material bundles | `LIST` nodes populated with `COMPLEX` material requirements, selected options, delivery times, cost and dependent task IDs |
 | Structured task state | `COMPLEX` nodes with status, duration and cost fields |
 | Reactive task forecast | `COMPLEX` + `CUSTOM_FUNCTION` projection of plan, actual duration, delay, variance, manual blocker and effective duration |
-| Resource-aware scheduling | Professional availability and shared-crew assignments automatically level overlapping work and expose the resulting delay |
-| Local operations workspace | Add contractors, advance purchases, record document references, and undo the workflow changes |
-| Live project portfolio | Create, persist and switch between renovation graphs without restarting the demo |
 | Runtime propagation | RxJS node subscriptions and `.next()` updates |
 | Independent runtime | A separate `WaveBinder` instance per graph runtime |
 | Runtime teardown | `nukeNodes()` during lifecycle cleanup |
@@ -138,6 +147,9 @@ tasks / materials / relationships
 | Cost | Domain aggregation and scenario deltas |
 | Scenario comparison | Clone, change, recalculate and compare |
 | Persistence | Canonical JSON snapshot; derived values are rebuilt |
+| Resource-aware scheduling | Professional availability and shared-crew assignments level overlapping work and expose the resulting delay |
+| Operations workflows | Contractors, purchases, document references and undoable local changes |
+| Project portfolio | Create, persist and switch between isolated renovation graphs |
 
 Wavebinder is not falsely credited with CPM or renovation semantics. It owns
 the reactive graph state; Renograph owns renovation intelligence.
@@ -229,5 +241,5 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
 - Project runtimes are currently created eagerly at startup. A lazy or bounded
   runtime cache is intentionally deferred while the portfolio remains a small
   local contest demo.
-- Hosted deployment and the final video are submission packaging tasks rather
-  than repository behavior.
+- A hosted deployment is not included; the repository provides the narrated
+  demo video alongside local and Docker workflows.
