@@ -83,6 +83,14 @@ export interface RenovationData {
   documents?: ProjectDocument[];
 }
 
+export type CriticalState = "ACTIVE" | "HISTORICAL" | "NONE";
+
+export interface ResourceLink {
+  professionalId: string;
+  predecessorTaskId: string;
+  successorTaskId: string;
+}
+
 export interface ScheduleEntry {
   nodeId: string;
   earliestStart: number;
@@ -97,12 +105,16 @@ export interface ScheduleEntry {
   resourceReadyDay: number;
   resourceDelayDays: number;
   professionalIds: string[];
+  resourcePredecessors: Array<{ professionalId: string; taskId: string }>;
 }
 
 export interface Analysis {
   schedule: ScheduleEntry[];
   durationDays: number;
   criticalPath: string[];
+  activeCriticalPath: string[];
+  historicalCriticalPath: string[];
+  resourceLinks: ResourceLink[];
   completionDate: string;
   resourceConflicts: Array<{ professionalId: string; taskIds: string[]; delayedTaskId: string; delayDays: number }>;
 }
@@ -114,18 +126,30 @@ export interface BlockerExplanation {
   status: "BLOCKED" | "READY";
   blockedBy: string[];
   rootBlockers: string[];
+  manualReasons?: Array<{ nodeId: string; reason: string }>;
 }
 
 export interface GraphNode extends RenovationNode {
   label: string;
+  criticalState: CriticalState;
   critical: boolean;
   blockedBy?: string[];
   rootBlockers?: string[];
 }
 
+export interface ResourceGraphEdge extends ResourceLink {
+  id: string;
+  source: string;
+  target: string;
+  professionalName: string;
+  trade: string;
+  criticalState: CriticalState;
+}
+
 export interface GraphResponse {
   nodes: GraphNode[];
-  edges: Array<Relationship & { source: string; target: string; critical: boolean }>;
+  edges: Array<Relationship & { source: string; target: string; critical: boolean; criticalState: CriticalState }>;
+  resourceEdges: ResourceGraphEdge[];
   analysis: Analysis;
   runtime?: {
     ready: boolean;
@@ -164,6 +188,7 @@ export interface ScenarioChange {
   durationDeltaDays?: number;
   newDurationDays?: number;
   newStatus?: NodeStatus;
+  actualDurationDays?: number;
   estimatedCostDelta?: number;
   deliveryDeltaDays?: number;
   newDeliveryDays?: number;
@@ -178,3 +203,31 @@ export interface ScenarioResult {
   affectedChain: string[];
   graph: GraphResponse;
 }
+
+export interface TaskForecast {
+  status: NodeStatus;
+  plannedDuration: number;
+  actualDuration: number | null;
+  delayDays: number;
+  effectiveDuration: number;
+  durationVariance: number;
+  manuallyBlocked: boolean;
+  estimatedCost: number;
+  actualCost: number;
+}
+export interface MaterialForecast {
+  materialId: string;
+  materialName: string;
+  selectedOptionId: string;
+  selectedOptionLabel: string;
+  available: boolean;
+  delivered: boolean;
+  deliveryDays: number;
+  estimatedCost: number;
+  actualCost: number;
+}
+export interface ForecastInputs {
+  tasks: Record<string, TaskForecast>;
+  materials: Record<string, MaterialForecast>;
+}
+export interface ProjectForecast { analysis: Analysis; summary: Summary; }

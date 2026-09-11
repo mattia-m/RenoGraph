@@ -1,417 +1,536 @@
 import { ComplexNode, ListNode, MultiNode, WaveBinder } from "wave-binder";
 import { randomUUID } from "node:crypto";
-import type { BlockerExplanation, NodeStatus, RenovationData, RenovationNode, Relationship, RoomMaterialRequirement, ScheduleEntry } from "../shared/types.js";
+import { isDeepStrictEqual } from "node:util";
+import type {
+  ForecastInputs,
+  MaterialForecast,
+  MaterialOption,
+  NodeStatus,
+  ProjectForecast,
+  RenovationData,
+  RenovationNode,
+  RoomMaterialRequirement,
+  TaskForecast,
+} from "../shared/types.js";
+import {
+  materialAvailable,
+  roomMaterialRequirements,
+  selectedMaterialOption,
+} from "./domain.js";
+import { analyze, summary } from "./forecast.js";
+export {
+  blockers,
+  effectiveTaskDuration,
+  roomMaterialRequirements,
+  schedule,
+  topologicalTasks,
+  validateNoCycle,
+} from "./domain.js";
 
-const completionName = (id: string) => `${id}__completed`;
-const deliveredName = (id: string) => `${id}__delivered`;
-const availableName = (id: string) => `${id}__available`;
-const readyName = (id: string) => `${id}__ready`;
-const progressName = (id: string) => `${id}__in_progress`;
-const stateName = (id: string) => `${id}__state`;
-const optionName = (id: string) => `${id}__option`;
-const roomMaterialsName = (id: string) => `${id}__materials`;
-const plannedDurationName = (id: string) => `${id}__planned_duration`;
-const actualDurationName = (id: string) => `${id}__actual_duration`;
-const delayName = (id: string) => `${id}__delay_days`;
-const manualClearName = (id: string) => `${id}__manual_clear`;
+type ProtoNode = ConstructorParameters<typeof WaveBinder>[1][number];
+type CustomFunction = ConstructorParameters<typeof WaveBinder>[3][number];
+const name = (id: string, field: string) => `${id}__${field}`;
+const dep = (nodeName: string, optional = false): ProtoNode["dep"][number] => ({
+  nodeName,
+  parameterName: nodeName,
+  isOptional: optional,
+  onUpdate: true,
+  namingResolvingRule: [],
+});
+const single = (nodeName: string, defaultValue?: unknown): ProtoNode => ({
+  name: nodeName,
+  path: `/${nodeName}`,
+  type: "SINGLE",
+  la: { type: "USER_SELECTION" as ProtoNode["la"]["type"] },
+  defaultValue,
+  dep: [],
+});
+const fields = (keys: string[]): ProtoNode[] =>
+  keys.map((key) => ({ ...single(key), path: `/${key}` }));
+const taskFields = [
+  "status",
+  "plannedDuration",
+  "actualDuration",
+  "delayDays",
+  "effectiveDuration",
+  "durationVariance",
+  "manuallyBlocked",
+  "estimatedCost",
+  "actualCost",
+];
+const materialFields = [
+  "materialId",
+  "materialName",
+  "selectedOptionId",
+  "selectedOptionLabel",
+  "available",
+  "delivered",
+  "deliveryDays",
+  "estimatedCost",
+  "actualCost",
+];
 
-export function effectiveTaskDuration(task: RenovationNode): number {
-  const measured = task.status === "COMPLETED" && task.actualDurationDays !== undefined ? task.actualDurationDays : (task.durationDays ?? 0);
-  return measured + (task.delayDays ?? 0);
-}
-
-function selectedMaterialOption(material: RenovationNode) {
-  return material.options?.find((option) => option.id === material.selectedOptionId) ?? material.options?.[0];
-}
-
-export function roomMaterialRequirements(data: RenovationData, roomId: string): RoomMaterialRequirement[] {
-  const roomTaskIds = new Set(data.relationships.filter((relationship) => relationship.type === "LOCATED_IN" && relationship.toNodeId === roomId).map((relationship) => relationship.fromNodeId));
-  const taskIdsByMaterial = new Map<string, string[]>();
-  for (const relationship of data.relationships.filter((candidate) => candidate.type === "REQUIRES_MATERIAL" && roomTaskIds.has(candidate.fromNodeId))) {
-    taskIdsByMaterial.set(relationship.toNodeId, [...(taskIdsByMaterial.get(relationship.toNodeId) ?? []), relationship.fromNodeId]);
-  }
-  return [...taskIdsByMaterial.entries()].map(([materialId, requiredByTaskIds]) => {
-    const material = data.nodes.find((node) => node.id === materialId && node.type === "MATERIAL")!;
-    const option = selectedMaterialOption(material);
-    const delivered = material.status === "COMPLETED";
-    return {
-      materialId,
-      materialName: material.name,
-      selectedOptionId: option?.id ?? "",
-      selectedOptionLabel: option?.label ?? "No option",
-      available: delivered || Boolean(option?.available),
-      delivered,
-      deliveryDays: delivered ? 0 : (option?.deliveryDays ?? 0),
-      estimatedCost: option?.estimatedCost ?? material.estimatedCost ?? 0,
-      requiredByTaskIds,
-    };
-  });
-}
-
-function licenseFromEnvironment(): any {
-  const raw = process.env.WAVEBINDER_LICENSE;
-  if (!raw) throw new Error("WAVEBINDER_LICENSE is required to start Renograph");
-  return JSON.parse(raw);
-}
+type ProjectFacts = Pick<
+  RenovationData,
+  "renovation" | "professionals" | "assignments"
+> & {
+  roomCosts: Record<string, { estimatedCost: number; actualCost: number }>;
+};
 
 export class RenovationRuntime {
   readonly binder: WaveBinder;
-  readonly instanceId = randomUUID();
+  readonly instanceId: string = randomUUID();
   readonly createdAt = new Date().toISOString();
   readonly role: "baseline" | "scenario";
   readonly rebuildCount: number;
-  private readonly subscriptions: any[] = [];
-  private readonly taskStateProjection = new Map<string, any>();
-  private readonly events: Array<{ nodeId: string; status: string; at: string }> = [];
+  private readonly subscriptions: Array<{ unsubscribe(): void }> = [];
+  private readonly taskStateProjection = new Map<string, TaskForecast>();
+  private readonly events: Array<{
+    nodeId: string;
+    status: string;
+    at: string;
+  }> = [];
+  private initialized = false;
+  private disposed = false;
 
-  constructor(readonly data: RenovationData, metadata: { role?: "baseline" | "scenario"; rebuildCount?: number } = {}) {
+  constructor(
+    public data: RenovationData,
+    metadata: { role?: "baseline" | "scenario"; rebuildCount?: number } = {},
+  ) {
     this.role = metadata.role ?? "baseline";
     this.rebuildCount = metadata.rebuildCount ?? 0;
-    const taskNodes = data.nodes.filter((node) => node.type === "TASK");
-    const materialNodes = data.nodes.filter((node) => node.type === "MATERIAL");
-    const protoNodes: any[] = [
-      {
-        name: "__project_start",
-        type: "SINGLE",
-        path: "/__project_start",
-        la: { type: "USER_SELECTION" },
-        defaultValue: 1,
-        dep: [],
-      },
-      ...data.nodes.flatMap((node) => [{
-        name: node.type === "MATERIAL" ? deliveredName(node.id) : completionName(node.id),
-        type: "SINGLE",
-        path: `/${node.id}/fact`,
-        la: { type: "USER_SELECTION" },
-        defaultValue: node.type === "MATERIAL" ? (node.status === "COMPLETED" ? 1 : 0) : (node.status === "COMPLETED" ? 1 : 0),
-        dep: [],
-      }, {
-        name: node.type === "TASK" ? progressName(node.id) : `${node.id}__unused`,
-        type: "SINGLE",
-        path: `/${node.id}/progress`,
-        la: { type: "USER_SELECTION" },
-        defaultValue: node.status === "IN_PROGRESS" ? 1 : 0,
-        dep: [],
-      }, ...(node.type === "TASK" ? [{
-        name: plannedDurationName(node.id), type: "SINGLE", path: `/${node.id}/plannedDuration`, la: { type: "USER_SELECTION" }, defaultValue: node.durationDays ?? 0, dep: [],
-      }, {
-        name: actualDurationName(node.id), type: "SINGLE", path: `/${node.id}/actualDuration`, la: { type: "USER_SELECTION" }, defaultValue: node.actualDurationDays ?? null, dep: [],
-      }, {
-        name: delayName(node.id), type: "SINGLE", path: `/${node.id}/delayDays`, la: { type: "USER_SELECTION" }, defaultValue: node.delayDays ?? 0, dep: [],
-      }, {
-        name: manualClearName(node.id), type: "SINGLE", path: `/${node.id}/manualClear`, la: { type: "USER_SELECTION" }, defaultValue: node.manualBlocker ? 0 : 1, dep: [],
-      }] : []), ...(node.type === "MATERIAL" ? [{
-        name: optionName(node.id),
-        type: "MULTI",
-        path: `/${node.id}/option`,
-        la: { type: "CUSTOM_FUNCTION", functionName: `options_${node.id}` },
-        dep: [],
-      }, {
-        name: availableName(node.id),
-        type: "SINGLE",
-        path: `/${node.id}/available`,
-        la: { type: "CUSTOM_FUNCTION", functionName: "materialAvailable" },
-        dep: [
-          { nodeName: optionName(node.id), parameterName: "option", isOptional: false, onUpdate: true },
-          { nodeName: deliveredName(node.id), parameterName: "delivered", isOptional: false, onUpdate: true },
-        ],
-      }] : []), {
-        name: readyName(node.id),
-        type: "SINGLE",
-        path: `/${node.id}/ready`,
-        la: { type: "CUSTOM_FUNCTION", functionName: "allDependenciesSatisfied" },
-        dep: this.dependenciesFor(node),
-      }, ...(node.type === "TASK" ? [{
-        name: stateName(node.id),
-        type: "COMPLEX",
-        path: `/${node.id}/state`,
-        la: { type: "CUSTOM_FUNCTION", functionName: `state_${node.id}` },
-        dep: [
-          { nodeName: completionName(node.id), parameterName: "completed", isOptional: false, onUpdate: true },
-          { nodeName: progressName(node.id), parameterName: "inProgress", isOptional: false, onUpdate: true },
-          { nodeName: readyName(node.id), parameterName: "ready", isOptional: false, onUpdate: true },
-          { nodeName: plannedDurationName(node.id), parameterName: "plannedDuration", isOptional: false, onUpdate: true },
-          { nodeName: actualDurationName(node.id), parameterName: "actualDuration", isOptional: true, onUpdate: true },
-          { nodeName: delayName(node.id), parameterName: "delayDays", isOptional: false, onUpdate: true },
-          { nodeName: manualClearName(node.id), parameterName: "manualClear", isOptional: false, onUpdate: true },
-        ],
-        protos: [
-          { name: "status", type: "SINGLE", path: "/status", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "plannedDuration", type: "SINGLE", path: "/plannedDuration", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "actualDuration", type: "SINGLE", path: "/actualDuration", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "delayDays", type: "SINGLE", path: "/delayDays", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "effectiveDuration", type: "SINGLE", path: "/effectiveDuration", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "durationVariance", type: "SINGLE", path: "/durationVariance", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "manuallyBlocked", type: "SINGLE", path: "/manuallyBlocked", la: { type: "USER_SELECTION" }, dep: [] },
-          { name: "estimatedCost", type: "SINGLE", path: "/estimatedCost", la: { type: "USER_SELECTION" }, dep: [] },
-        ],
-      }] : [])]),
-      ...data.nodes.filter((node) => node.type === "ROOM").map((room) => ({
-        name: roomMaterialsName(room.id),
-        type: "LIST",
-        path: `/${room.id}/materials`,
-        la: { type: "USER_SELECTION" },
-        defaultValue: roomMaterialRequirements(data, room.id).length,
-        dep: [],
-        proto: {
-          name: `${room.id}__material`,
-          type: "COMPLEX",
-          path: "/material",
-          la: { type: "USER_SELECTION" },
-          dep: [],
-          protos: [
-            { name: "materialId", type: "SINGLE", path: "/materialId", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "materialName", type: "SINGLE", path: "/materialName", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "selectedOptionId", type: "SINGLE", path: "/selectedOptionId", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "selectedOptionLabel", type: "SINGLE", path: "/selectedOptionLabel", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "available", type: "SINGLE", path: "/available", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "delivered", type: "SINGLE", path: "/delivered", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "deliveryDays", type: "SINGLE", path: "/deliveryDays", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "estimatedCost", type: "SINGLE", path: "/estimatedCost", la: { type: "USER_SELECTION" }, dep: [] },
-            { name: "requiredByTaskIds", type: "SINGLE", path: "/requiredByTaskIds", la: { type: "USER_SELECTION" }, dep: [] },
-          ],
-        },
-      })),
+    const tasks = data.nodes.filter((node) => node.type === "TASK");
+    const materials = data.nodes.filter((node) => node.type === "MATERIAL");
+    const protoNodes: ProtoNode[] = [
+      single("__project_start", 1),
+      single("__lists_active", null),
+      single("__project_facts", this.projectFacts()),
     ];
-
-    const customFunctions: any[] = [{
-      name: "allDependenciesSatisfied",
-      implementation: (...values: unknown[]) => Number(values.length > 0 && values.every((value) => value === 1)),
-    }, {
-      name: "materialAvailable",
-      implementation: (option: any, delivered: number) => Number(Boolean(option?.available) || delivered === 1),
-    }, ...materialNodes.map((material) => ({
-      name: `options_${material.id}`,
-      implementation: () => material.options ?? [],
-    })), ...taskNodes.map((task) => ({
-      name: `state_${task.id}`,
-      implementation: (completed: number, inProgress: number, ready: number, plannedDuration: number, actualDuration: number | null, delayDays: number, manualClear: number) => ({
-        status: completed === 1 ? "COMPLETED" : inProgress === 1 ? "IN_PROGRESS" : ready === 1 ? "READY" : "BLOCKED",
-        plannedDuration,
-        actualDuration,
-        delayDays,
-        effectiveDuration: (completed === 1 && actualDuration !== null ? actualDuration : plannedDuration) + delayDays,
-        durationVariance: actualDuration === null ? delayDays : actualDuration - plannedDuration + delayDays,
-        manuallyBlocked: manualClear === 0,
-        estimatedCost: task.estimatedCost ?? 0,
-      }),
-    }))];
-    this.binder = new WaveBinder(licenseFromEnvironment(), protoNodes, new Map(), customFunctions);
+    const customFunctions: CustomFunction[] = [];
+    const derived = (
+      nodeName: string,
+      type: string,
+      dependencies: ProtoNode["dep"],
+      implementation: Function,
+      extra: Partial<ProtoNode> = {},
+    ) => {
+      protoNodes.push({
+        name: nodeName,
+        path: `/${nodeName}`,
+        type,
+        dep: dependencies,
+        la: {
+          type: "CUSTOM_FUNCTION" as ProtoNode["la"]["type"],
+          functionName: nodeName,
+        },
+        ...extra,
+      });
+      customFunctions.push({ name: nodeName, implementation });
+    };
+    for (const node of materials) {
+      protoNodes.push(
+        single(name(node.id, "delivered"), Number(node.status === "COMPLETED")),
+      );
+      protoNodes.push(
+        single(name(node.id, "catalog"), structuredClone(node.options ?? [])),
+      );
+      protoNodes.push(single(name(node.id, "name"), node.name));
+      protoNodes.push(
+        single(name(node.id, "estimated_cost"), node.estimatedCost ?? 0),
+      );
+      protoNodes.push(
+        single(name(node.id, "actual_cost"), node.actualCost ?? 0),
+      );
+      derived(
+        name(node.id, "option"),
+        "MULTI",
+        [dep(name(node.id, "catalog"))],
+        (options: MaterialOption[]) => options,
+      );
+      derived(
+        name(node.id, "available"),
+        "SINGLE",
+        [dep(name(node.id, "option"), true), dep(name(node.id, "delivered"))],
+        (option: MaterialOption | undefined, delivered: number) =>
+          Number(materialAvailable(option, delivered === 1)),
+      );
+      derived(
+        name(node.id, "material_state"),
+        "COMPLEX",
+        [
+          dep(name(node.id, "option"), true),
+          dep(name(node.id, "delivered")),
+          dep(name(node.id, "name")),
+          dep(name(node.id, "estimated_cost")),
+          dep(name(node.id, "actual_cost")),
+        ],
+        (
+          option: MaterialOption | undefined,
+          delivered: number,
+          materialName: string,
+          estimatedCost: number,
+          actualCost: number,
+        ): MaterialForecast => ({
+          materialId: node.id,
+          materialName,
+          selectedOptionId: option?.id ?? "",
+          selectedOptionLabel: option?.label ?? "No option",
+          available: materialAvailable(option, delivered === 1),
+          delivered: delivered === 1,
+          deliveryDays: delivered === 1 ? 0 : (option?.deliveryDays ?? 0),
+          estimatedCost: option?.estimatedCost ?? estimatedCost,
+          actualCost,
+        }),
+        { protos: fields(materialFields) },
+      );
+    }
+    for (const task of tasks) {
+      const facts: Record<string, unknown> = {
+        completed: Number(task.status === "COMPLETED"),
+        in_progress: Number(task.status === "IN_PROGRESS"),
+        planned_duration: task.durationDays ?? 0,
+        actual_duration: task.actualDurationDays ?? null,
+        delay_days: task.delayDays ?? 0,
+        manual_clear: task.manualBlocker ? 0 : 1,
+        estimated_cost: task.estimatedCost ?? 0,
+        actual_cost: task.actualCost ?? 0,
+      };
+      for (const [field, value] of Object.entries(facts))
+        protoNodes.push(single(name(task.id, field), value));
+      const prerequisites = data.relationships.filter(
+        (edge) => edge.fromNodeId === task.id && edge.type !== "LOCATED_IN",
+      );
+      const dependencies = prerequisites.map((edge) =>
+        dep(
+          name(
+            edge.toNodeId,
+            edge.type === "REQUIRES_MATERIAL" ? "available" : "completed",
+          ),
+        ),
+      );
+      derived(
+        name(task.id, "ready"),
+        "SINGLE",
+        [...dependencies, dep(name(task.id, "manual_clear"))],
+        (...values: number[]) => Number(values.every((value) => value === 1)),
+      );
+      derived(
+        name(task.id, "state"),
+        "COMPLEX",
+        [
+          "completed",
+          "in_progress",
+          "ready",
+          "planned_duration",
+          "actual_duration",
+          "delay_days",
+          "manual_clear",
+          "estimated_cost",
+          "actual_cost",
+        ].map((field) =>
+          dep(name(task.id, field), field === "actual_duration"),
+        ),
+        (
+          completed: number,
+          inProgress: number,
+          ready: number,
+          plannedDuration: number,
+          actualDuration: number | null,
+          delayDays: number,
+          manualClear: number,
+          estimatedCost: number,
+          actualCost: number,
+        ): TaskForecast => ({
+          status:
+            completed === 1
+              ? "COMPLETED"
+              : inProgress === 1
+                ? "IN_PROGRESS"
+                : ready === 1
+                  ? "READY"
+                  : "BLOCKED",
+          plannedDuration,
+          actualDuration: actualDuration ?? null,
+          delayDays,
+          effectiveDuration:
+            (completed === 1 && actualDuration != null
+              ? actualDuration
+              : plannedDuration) + delayDays,
+          durationVariance:
+            actualDuration == null
+              ? delayDays
+              : actualDuration - plannedDuration + delayDays,
+          manuallyBlocked: manualClear === 0,
+          estimatedCost,
+          actualCost,
+        }),
+        { protos: fields(taskFields) },
+      );
+    }
+    for (const room of data.nodes.filter((node) => node.type === "ROOM")) {
+      const requirements = roomMaterialRequirements(data, room.id);
+      derived(
+        name(room.id, "materials"),
+        "LIST",
+        [
+          dep("__lists_active"),
+          ...(requirements.length
+            ? requirements.map((item) =>
+                dep(name(item.materialId, "material_state")),
+              )
+            : [dep("__project_start")]),
+        ],
+        (
+          _active: number,
+          ...values: MaterialForecast[]
+        ): RoomMaterialRequirement[] =>
+          requirements.map((requirement, index) => ({
+            ...values[index],
+            requiredByTaskIds: requirement.requiredByTaskIds,
+          })),
+        {
+          proto: {
+            name: name(room.id, "material"),
+            path: "/material",
+            type: "COMPLEX",
+            la: { type: "USER_SELECTION" as ProtoNode["la"]["type"] },
+            dep: [],
+            protos: fields([...materialFields, "requiredByTaskIds"]),
+          },
+        },
+      );
+    }
+    // Only topology is captured. Every mutable forecast input is a dependency.
+    const topology = structuredClone(data);
+    derived(
+      "__project_forecast",
+      "SINGLE",
+      [
+        dep("__project_facts"),
+        ...tasks.map((task) => dep(name(task.id, "state"))),
+        ...materials.map((material) =>
+          dep(name(material.id, "material_state")),
+        ),
+      ],
+      (
+        project: ProjectFacts,
+        ...values: Array<TaskForecast | MaterialForecast>
+      ): ProjectForecast => {
+        const inputs: ForecastInputs = {
+          tasks: Object.fromEntries(
+            tasks.map((task, index) => [
+              task.id,
+              values[index] as TaskForecast,
+            ]),
+          ),
+          materials: Object.fromEntries(
+            materials.map((material, index) => [
+              material.id,
+              values[tasks.length + index] as MaterialForecast,
+            ]),
+          ),
+        };
+        const forecastData = {
+          ...topology,
+          ...project,
+          nodes: topology.nodes.map((node) =>
+            node.type === "ROOM"
+              ? { ...node, ...project.roomCosts[node.id] }
+              : node,
+          ),
+        };
+        const analysis = analyze(forecastData, inputs);
+        return { analysis, summary: summary(forecastData, analysis, inputs) };
+      },
+    );
+    const raw = process.env.WAVEBINDER_LICENSE;
+    if (!raw)
+      throw new Error("WAVEBINDER_LICENSE is required to start Renograph");
+    this.binder = new WaveBinder(
+      JSON.parse(raw),
+      protoNodes,
+      new Map(),
+      customFunctions,
+    );
     this.binder.tangleNodes();
   }
 
-  private dependenciesFor(node: RenovationNode) {
-    const dependencies = this.data.relationships.filter((relationship) => relationship.fromNodeId === node.id && relationship.type !== "LOCATED_IN");
-    const result = dependencies.map((relationship) => {
-      const upstream = this.data.nodes.find((candidate) => candidate.id === relationship.toNodeId)!;
-      return {
-        nodeName: upstream.type === "MATERIAL" ? availableName(upstream.id) : completionName(upstream.id),
-        parameterName: upstream.id,
-        isOptional: false,
-        onUpdate: true,
-      };
+  private projectFacts(): ProjectFacts {
+    return structuredClone({
+      renovation: this.data.renovation,
+      professionals: this.data.professionals ?? [],
+      assignments: this.data.assignments ?? [],
+      roomCosts: Object.fromEntries(
+        this.data.nodes
+          .filter((node) => node.type === "ROOM")
+          .map((node) => [
+            node.id,
+            {
+              estimatedCost: node.estimatedCost ?? 0,
+              actualCost: node.actualCost ?? 0,
+            },
+          ]),
+      ),
     });
-    if (result.length === 0) {
-      result.push({ nodeName: "__project_start", parameterName: "projectStart", isOptional: false, onUpdate: true });
-    }
-    if (node.type === "TASK") result.push({ nodeName: manualClearName(node.id), parameterName: "manualClear", isOptional: false, onUpdate: true });
-    return result;
   }
 
   async ready(): Promise<void> {
     await this.binder.waitUntilReady();
-    if (!this.binder.isReady()) throw new Error("Wavebinder runtime is not ready");
-    this.bindSubscriptions();
+    if (this.disposed || !this.binder.isReady())
+      throw new Error("Wavebinder runtime is not ready");
+    if (this.initialized) return;
+    this.initialized = true;
+    this.refresh();
+    // Wavebinder registers LIST children in its node array. Materialize them only
+    // after tangleNodes finishes traversing that array, so no roots are skipped.
+    this.write("__lists_active", 1);
+    for (const task of this.data.nodes.filter((node) => node.type === "TASK")) {
+      this.subscriptions.push(
+        this.binder
+          .getNodeByName(name(task.id, "state"))
+          .subscribe((value: TaskForecast) => {
+            if (!value?.status) return;
+            const previous = this.taskStateProjection.get(task.id);
+            if (isDeepStrictEqual(previous, value)) return;
+            this.taskStateProjection.set(task.id, structuredClone(value));
+            this.record(task.id, value.status);
+          }),
+      );
+    }
   }
 
-  private bindSubscriptions(): void {
-    for (const task of this.data.nodes.filter((node) => node.type === "TASK")) {
-      const node = this.binder.getNodeByName(stateName(task.id)) as ComplexNode;
-      this.subscriptions.push(node.subscribe((value: any) => {
-        if (!value?.status) return;
-        this.taskStateProjection.set(task.id, value);
-        this.events.push({ nodeId: task.id, status: value.status, at: new Date().toISOString() });
-        if (this.events.length > 100) this.events.shift();
-      }));
-    }
+  private record(nodeId: string, status: string): void {
+    this.events.push({ nodeId, status, at: new Date().toISOString() });
+    if (this.events.length > 100) this.events.shift();
+  }
+
+  private write(nodeName: string, value: unknown): boolean {
+    const node = this.binder.getNodeByName(nodeName);
+    if (isDeepStrictEqual(node.getNodeValue(), value)) return false;
+    node.next(structuredClone(value));
+    return true;
   }
 
   setFact(nodeId: string, status: NodeStatus): void {
     const node = this.data.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node || (node.type !== "TASK" && node.type !== "MATERIAL")) return;
-    const fact = node.type === "MATERIAL" ? deliveredName(nodeId) : completionName(nodeId);
-    this.binder.getNodeByName(fact).next(status === "COMPLETED" ? 1 : 0);
-    if (node.type === "TASK") this.binder.getNodeByName(progressName(nodeId)).next(status === "IN_PROGRESS" ? 1 : 0);
-    if (node.type === "TASK") {
-      this.binder.getNodeByName(plannedDurationName(nodeId)).next(node.durationDays ?? 0);
-      this.binder.getNodeByName(actualDurationName(nodeId)).next(node.actualDurationDays ?? null);
-      this.binder.getNodeByName(delayName(nodeId)).next(node.delayDays ?? 0);
-      this.binder.getNodeByName(manualClearName(nodeId)).next(node.manualBlocker ? 0 : 1);
+    if (!node || node.type === "ROOM") return;
+    if (node.type === "MATERIAL") {
+      this.write(name(nodeId, "delivered"), Number(status === "COMPLETED"));
+      this.write(name(nodeId, "name"), node.name);
+      this.write(name(nodeId, "estimated_cost"), node.estimatedCost ?? 0);
+      this.write(name(nodeId, "actual_cost"), node.actualCost ?? 0);
+      const catalogChanged = this.write(
+        name(nodeId, "catalog"),
+        node.options ?? [],
+      );
+      const option = selectedMaterialOption(node);
+      const optionNode = this.binder.getNodeByName(
+        name(nodeId, "option"),
+      ) as MultiNode;
+      if (
+        option &&
+        (catalogChanged ||
+          !isDeepStrictEqual(optionNode.getNodeValue(), option))
+      )
+        optionNode.setSelection(node.options!.indexOf(option));
+      return;
     }
-  }
-
-  isReady(nodeId: string): boolean {
-    return this.taskState(nodeId)?.status === "READY";
-  }
-
-  taskState(nodeId: string): any { return this.taskStateProjection.get(nodeId) ?? (this.binder.getNodeByName(stateName(nodeId)) as ComplexNode)?.getNodeValue(); }
-
-  selectMaterialOption(nodeId: string, optionId: string): RenovationNode {
-    const material = this.data.nodes.find((node) => node.id === nodeId && node.type === "MATERIAL");
-    if (!material || !material.options) throw new Error("NODE_NOT_FOUND");
-    const index = material.options.findIndex((option) => option.id === optionId);
-    if (index < 0) throw new Error("MATERIAL_OPTION_NOT_FOUND");
-    const optionNode = this.binder.getNodeByName(optionName(nodeId)) as MultiNode;
-    optionNode.setSelection(index);
-    material.selectedOptionId = optionId;
-    material.estimatedCost = material.options[index].estimatedCost;
-    this.refreshRoomMaterialBundles();
-    this.events.push({ nodeId, status: `OPTION:${optionId}`, at: new Date().toISOString() });
-    return material;
+    const facts: Record<string, unknown> = {
+      planned_duration: node.durationDays ?? 0,
+      actual_duration: node.actualDurationDays ?? null,
+      delay_days: node.delayDays ?? 0,
+      manual_clear: node.manualBlocker ? 0 : 1,
+      estimated_cost: node.estimatedCost ?? 0,
+      actual_cost: node.actualCost ?? 0,
+      in_progress: Number(status === "IN_PROGRESS"),
+      completed: Number(status === "COMPLETED"),
+    };
+    for (const [field, value] of Object.entries(facts))
+      this.write(name(nodeId, field), value);
   }
 
   refresh(): void {
-    for (const node of this.data.nodes) {
-      this.setFact(node.id, node.status);
-      if (node.type === "MATERIAL" && node.selectedOptionId) this.selectMaterialOption(node.id, node.selectedOptionId);
-    }
-    this.refreshRoomMaterialBundles();
+    for (const node of this.data.nodes) this.setFact(node.id, node.status);
+    this.write("__project_facts", this.projectFacts());
   }
 
-  private refreshRoomMaterialBundles(): void {
-    for (const room of this.data.nodes.filter((node) => node.type === "ROOM")) {
-      const list = this.binder.getNodeByName(roomMaterialsName(room.id)) as ListNode;
-      list.next(roomMaterialRequirements(this.data, room.id));
-    }
+  selectMaterialOption(nodeId: string, optionId: string): RenovationNode {
+    const material = this.data.nodes.find(
+      (node) => node.id === nodeId && node.type === "MATERIAL",
+    );
+    const option = material?.options?.find((option) => option.id === optionId);
+    if (!material || !option) throw new Error("MATERIAL_OPTION_NOT_FOUND");
+    const changed = material.selectedOptionId !== optionId;
+    material.selectedOptionId = optionId;
+    material.estimatedCost = option.estimatedCost;
+    this.setFact(nodeId, material.status);
+    if (changed) this.record(nodeId, `OPTION:${optionId}`);
+    return material;
   }
 
+  taskState(nodeId: string): TaskForecast {
+    return (
+      this.binder.getNodeByName(name(nodeId, "state")) as ComplexNode
+    ).getNodeValue() as TaskForecast;
+  }
+  isReady(nodeId: string): boolean {
+    return this.taskState(nodeId).status === "READY";
+  }
+  forecast(): ProjectForecast {
+    if (!this.binder.isReady())
+      throw new Error("Wavebinder runtime is not ready");
+    const forecast = this.binder
+      .getNodeByName("__project_forecast")
+      .getNodeValue() as ProjectForecast;
+    if (!forecast?.analysis || !forecast.summary)
+      throw new Error("WAVEBINDER_FORECAST_NOT_READY");
+    return structuredClone(forecast);
+  }
   deriveStatuses(): void {
-    for (const node of this.data.nodes.filter((candidate) => candidate.type === "TASK")) {
-      if (node.status === "COMPLETED" || node.status === "IN_PROGRESS") continue;
-      node.status = this.isReady(node.id) ? "READY" : "BLOCKED";
-    }
+    for (const node of this.data.nodes.filter((node) => node.type === "TASK"))
+      node.status = this.taskState(node.id).status;
   }
-
   runtimeInfo() {
+    const nodes = this.binder.getNodes();
     return {
       ready: this.binder.isReady(),
-      nodeCount: this.binder.getNodes().length,
-      dependencyCount: this.data.relationships.filter((relationship) => relationship.type !== "LOCATED_IN").length,
-      derivedNodeCount: this.data.nodes.length,
-      complexNodeCount: this.data.nodes.filter((node) => node.type === "TASK").length,
-      multiNodeCount: this.data.nodes.filter((node) => node.type === "MATERIAL").length,
-      listNodeCount: this.binder.getNodes().filter((node) => node instanceof ListNode).length,
+      nodeCount: nodes.length,
+      dependencyCount: nodes.reduce(
+        (total, node) => total + node.node.dep.length,
+        0,
+      ),
+      derivedNodeCount: nodes.filter(
+        (node) => node.node.la.type === "CUSTOM_FUNCTION",
+      ).length,
+      complexNodeCount: nodes.filter((node) => node instanceof ComplexNode)
+        .length,
+      multiNodeCount: nodes.filter((node) => node instanceof MultiNode).length,
+      listNodeCount: nodes.filter((node) => node instanceof ListNode).length,
       subscriptionCount: this.subscriptions.length,
       instanceId: this.instanceId,
       role: this.role,
       createdAt: this.createdAt,
       rebuildCount: this.rebuildCount,
       eventCount: this.events.length,
-      lastEvent: this.events.at(-1) ? `${this.events.at(-1)!.nodeId}:${this.events.at(-1)!.status}` : undefined,
-      dataPool: this.binder.getDataPool() as Record<string, unknown>,
+      lastEvent: this.events.at(-1)
+        ? `${this.events.at(-1)!.nodeId}:${this.events.at(-1)!.status}`
+        : undefined,
+      dataPool: structuredClone(this.binder.getDataPool()) as Record<
+        string,
+        unknown
+      >,
     };
   }
-
-  recentEvents() { return this.events.slice(-12).reverse(); }
-
-  dispose(): void { this.subscriptions.forEach((subscription) => subscription.unsubscribe()); this.binder.nukeNodes(); }
-}
-
-export function topologicalTasks(data: RenovationData): RenovationNode[] {
-  const tasks = data.nodes.filter((node) => node.type === "TASK");
-  const byId = new Map(tasks.map((task) => [task.id, task]));
-  const prerequisites = new Map(tasks.map((task) => [task.id, new Set<string>()]));
-  for (const relationship of data.relationships.filter((item) => item.type === "DEPENDS_ON")) {
-    if (byId.has(relationship.fromNodeId) && byId.has(relationship.toNodeId)) prerequisites.get(relationship.fromNodeId)!.add(relationship.toNodeId);
+  recentEvents() {
+    return this.events.slice(-12).reverse();
   }
-  const result: RenovationNode[] = [];
-  const remaining = new Set(tasks.map((task) => task.id));
-  while (remaining.size) {
-    const next = [...remaining].find((id) => [...prerequisites.get(id)!].every((dependency) => !remaining.has(dependency)));
-    if (!next) throw new Error("DEPENDENCY_CYCLE");
-    result.push(byId.get(next)!);
-    remaining.delete(next);
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.subscriptions
+      .splice(0)
+      .forEach((subscription) => subscription.unsubscribe());
+    this.taskStateProjection.clear();
+    this.binder.nukeNodes();
   }
-  return result;
-}
-
-export function schedule(data: RenovationData): ScheduleEntry[] {
-  const tasks = topologicalTasks(data);
-  const entries = new Map<string, ScheduleEntry>();
-  const predecessors = (id: string) => data.relationships.filter((item) => item.type === "DEPENDS_ON" && item.fromNodeId === id).map((item) => item.toNodeId);
-  const successors = (id: string) => data.relationships.filter((item) => item.type === "DEPENDS_ON" && item.toNodeId === id).map((item) => item.fromNodeId);
-  const resourceSuccessors = new Map<string, Set<string>>();
-  const materialConstraints = (id: string) => data.relationships.filter((item) => item.type === "REQUIRES_MATERIAL" && item.fromNodeId === id).map((item) => {
-    const material = data.nodes.find((node) => node.id === item.toNodeId && node.type === "MATERIAL");
-    const deliveryDays = material?.status === "COMPLETED" ? 0 : (material ? selectedMaterialOption(material)?.deliveryDays ?? 0 : 0);
-    return { materialId: item.toNodeId, deliveryDays };
-  });
-  const professionalFreeDay = new Map((data.professionals ?? []).map((professional) => [professional.id, professional.availableFromDay]));
-  const previousTaskByProfessional = new Map<string, string>();
-  for (const task of tasks) {
-    const previous = predecessors(task.id).map((id) => entries.get(id)!).filter(Boolean);
-    const constraints = materialConstraints(task.id);
-    const materialReadyDay = Math.max(0, ...constraints.map((constraint) => constraint.deliveryDays));
-    const predecessorReadyDay = previous.length ? Math.max(...previous.map((entry) => entry.earliestFinish)) : 0;
-    const professionalIds = (data.assignments ?? []).filter((assignment) => assignment.taskId === task.id).map((assignment) => assignment.professionalId);
-    const resourceReadyDay = Math.max(0, ...professionalIds.map((id) => professionalFreeDay.get(id) ?? 0));
-    const dependencyReadyDay = Math.max(predecessorReadyDay, materialReadyDay);
-    const earliestStart = Math.max(dependencyReadyDay, resourceReadyDay);
-    const effectiveDurationDays = effectiveTaskDuration(task);
-    const earliestFinish = earliestStart + effectiveDurationDays;
-    professionalIds.forEach((id) => {
-      const previousTaskId = previousTaskByProfessional.get(id);
-      if (previousTaskId) {
-        const linked = resourceSuccessors.get(previousTaskId) ?? new Set<string>();
-        linked.add(task.id);
-        resourceSuccessors.set(previousTaskId, linked);
-      }
-      previousTaskByProfessional.set(id, task.id);
-      professionalFreeDay.set(id, earliestFinish);
-    });
-    entries.set(task.id, { nodeId: task.id, earliestStart, earliestFinish, latestStart: 0, latestFinish: 0, slack: 0, critical: false, materialReadyDay, materialConstraints: constraints, effectiveDurationDays, resourceReadyDay, resourceDelayDays: Math.max(0, resourceReadyDay - dependencyReadyDay), professionalIds });
-  }
-  const projectDuration = Math.max(0, ...[...entries.values()].map((entry) => entry.earliestFinish));
-  for (const task of [...tasks].reverse()) {
-    const entry = entries.get(task.id)!;
-    const nextIds = new Set([...successors(task.id), ...(resourceSuccessors.get(task.id) ?? [])]);
-    const next = [...nextIds].map((id) => entries.get(id)!).filter(Boolean);
-    entry.latestFinish = next.length ? Math.min(...next.map((candidate) => candidate.latestStart)) : projectDuration;
-    entry.latestStart = entry.latestFinish - effectiveTaskDuration(task);
-    entry.slack = entry.latestStart - entry.earliestStart;
-    entry.critical = entry.slack === 0;
-  }
-  return [...entries.values()];
-}
-
-export function blockers(data: RenovationData, nodeId: string): BlockerExplanation {
-  const direct = data.relationships.filter((relationship) => relationship.fromNodeId === nodeId && relationship.type !== "LOCATED_IN").map((relationship) => relationship.toNodeId).filter((id) => data.nodes.find((node) => node.id === id)?.status !== "COMPLETED");
-  const roots = new Set<string>();
-  const visit = (id: string, seen = new Set<string>()) => {
-    if (seen.has(id)) return;
-    seen.add(id);
-    const next = data.relationships.filter((relationship) => relationship.fromNodeId === id && relationship.type !== "LOCATED_IN").map((relationship) => relationship.toNodeId).filter((candidate) => data.nodes.find((node) => node.id === candidate)?.status !== "COMPLETED");
-    if (!next.length) roots.add(id);
-    else next.forEach((candidate) => visit(candidate, seen));
-  };
-  direct.forEach((id) => visit(id));
-  return { nodeId, status: direct.length ? "BLOCKED" : "READY", blockedBy: direct, rootBlockers: [...roots] };
-}
-
-export function validateNoCycle(data: RenovationData, fromNodeId: string, toNodeId: string): string[] | null {
-  if (fromNodeId === toNodeId) return [fromNodeId, toNodeId];
-  const path: string[] = [];
-  const visit = (current: string, seen: Set<string>): boolean => {
-    path.push(current);
-    if (current === fromNodeId) return true;
-    for (const relationship of data.relationships.filter((item) => item.type === "DEPENDS_ON" && item.fromNodeId === current)) {
-      if (!seen.has(relationship.toNodeId)) {
-        seen.add(relationship.toNodeId);
-        if (visit(relationship.toNodeId, seen)) return true;
-      }
-    }
-    path.pop();
-    return false;
-  };
-  return visit(toNodeId, new Set([toNodeId])) ? [fromNodeId, ...path] : null;
 }

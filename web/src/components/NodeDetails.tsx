@@ -1,4 +1,8 @@
-import type { GraphNode, NodeStatus } from "../../../src/shared/types.js";
+import type {
+  GraphNode,
+  NodeStatus,
+  ResourceGraphEdge,
+} from "../../../src/shared/types.js";
 const money = new Intl.NumberFormat("en-IE", {
   style: "currency",
   currency: "EUR",
@@ -31,6 +35,7 @@ export function NodeDetails({
   allNodes,
   dependencies,
   dependents,
+  resourceConnections,
   onAction,
   onScenario,
   onEdit,
@@ -40,6 +45,7 @@ export function NodeDetails({
   allNodes: GraphNode[];
   dependencies: GraphNode[];
   dependents: GraphNode[];
+  resourceConnections: ResourceGraphEdge[];
   onAction: (action: "start" | "complete" | "block") => void;
   onScenario: () => void;
   onEdit: () => void;
@@ -112,16 +118,59 @@ export function NodeDetails({
           {delay > 0 && <small>Includes +{delay}d direct delay</small>}
         </div>
       )}
-      {node.critical && (
+      {node.criticalState === "ACTIVE" && (
         <div className="critical-callout">
           <span>◆</span>
           <div>
-            <strong>Critical activity</strong>
+            <strong>Remaining critical work</strong>
             <p>
-              Any delay beyond available slack can move the projected
-              completion.
+              This unfinished task has no schedule buffer. Delaying it moves the
+              projected completion.
             </p>
           </div>
+        </div>
+      )}
+      {node.criticalState === "HISTORICAL" && (
+        <div className="critical-callout historical-callout">
+          <span>✓</span>
+          <div>
+            <strong>Completed critical-path work</strong>
+            <p>
+              This completed task is part of the full project’s critical path.
+              No remaining work needs attention here.
+            </p>
+          </div>
+        </div>
+      )}
+      {resourceConnections.length > 0 && (
+        <div className="detail-section crew-connections">
+          <span className="eyebrow">SHARED CREW · SCHEDULED ORDER</span>
+          {resourceConnections.map((connection) => (
+            <div className="crew-connection" key={connection.id}>
+              <strong>
+                {connection.professionalName} · {connection.trade}
+              </strong>
+              <p>
+                {graphNodeName(connection.source, allNodes)} →{" "}
+                {graphNodeName(connection.target, allNodes)}
+              </p>
+              <small>
+                {connection.source === node.id
+                  ? "The next task uses the same person and is scheduled after this work."
+                  : "This task uses the same person and is scheduled after the preceding work."}
+              </small>
+              {connection.criticalState === "ACTIVE" && (
+                <p className="crew-critical-note">
+                  This hand-off is on the remaining critical path.
+                </p>
+              )}
+              {connection.criticalState === "HISTORICAL" && (
+                <p className="muted">
+                  Completed hand-off on the full project’s critical path.
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
       {node.manualBlocker && (

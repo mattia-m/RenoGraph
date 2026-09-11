@@ -180,13 +180,14 @@ export function WorkspaceView() {
           </span>
         </div>
         <div className="metric">
-          <span className="eyebrow">CRITICAL PATH</span>
+          <span className="eyebrow">FULL CRITICAL PATH</span>
           <strong>
             {summary?.criticalPathDurationDays ?? 0}
             <small>d</small>
           </strong>
           <span className="metric-note">
-            {graph?.analysis.criticalPath.length ?? 0} activities
+            {graph?.analysis.activeCriticalPath?.length ?? 0} remaining ·{" "}
+            {graph?.analysis.historicalCriticalPath?.length ?? 0} completed
           </span>
         </div>
       </section>
@@ -236,8 +237,15 @@ export function WorkspaceView() {
             onClick={() => setShowCritical((value) => !value)}
           >
             <span className="signal-line" />
-            Critical path<span>{graph?.analysis.criticalPath.length ?? 0}</span>
+            Remaining critical
+            <span>
+              {displayedGraph?.analysis.activeCriticalPath?.length ?? 0}
+            </span>
           </button>
+          <div className="critical-history-count">
+            {displayedGraph?.analysis.historicalCriticalPath?.length ?? 0}{" "}
+            completed on the full critical path
+          </div>
           {(["READY", "BLOCKED", "IN_PROGRESS"] as const).map((status) => (
             <button
               key={status}
@@ -311,6 +319,17 @@ export function WorkspaceView() {
               <button onClick={() => void resetDemo()}>Reset demo</button>
             </div>
           </div>
+          <div className="graph-legend" aria-label="Graph legend">
+            <span>
+              <i className="legend-active" /> Remaining critical work
+            </span>
+            <span>
+              <i className="legend-history" /> Completed critical-path work
+            </span>
+            <span>
+              <i className="legend-crew" /> Shared crew → scheduled next
+            </span>
+          </div>
           <div className="graph-canvas">
             {graph ? (
               <ReactFlow
@@ -366,6 +385,13 @@ export function WorkspaceView() {
                 <NodeDetails
                   node={selectedNode}
                   allNodes={displayedGraph?.nodes ?? []}
+                  resourceConnections={(
+                    displayedGraph?.resourceEdges ?? []
+                  ).filter(
+                    (edge) =>
+                      edge.source === selectedNode.id ||
+                      edge.target === selectedNode.id,
+                  )}
                   dependencies={
                     dependencies
                       .map((edge) =>

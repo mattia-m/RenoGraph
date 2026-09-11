@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Edge } from "@xyflow/react";
+import { buildFlowEdges } from "../graphPresentation.js";
 import type {
   GraphNode,
   GraphResponse,
@@ -138,23 +138,14 @@ export function useRenovationWorkspace() {
         })),
     [displayedGraph, filter, scenario, scenarioView],
   );
-  const visibleIds = new Set(flowNodes.map((node) => node.id));
-  const flowEdges = useMemo<Edge[]>(
+  const flowEdges = useMemo(
     () =>
-      (displayedGraph?.edges ?? [])
-        .filter(
-          (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
-        )
-        .map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          type: "smoothstep",
-          animated: showCritical && edge.critical,
-          className:
-            showCritical && edge.critical ? "critical-edge" : "normal-edge",
-        })),
-    [displayedGraph, showCritical, filter],
+      buildFlowEdges(
+        displayedGraph,
+        new Set(flowNodes.map((node) => node.id)),
+        showCritical,
+      ),
+    [displayedGraph, showCritical, flowNodes],
   );
 
   const dependencies = selectedNode

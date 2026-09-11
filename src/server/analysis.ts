@@ -1,71 +1,38 @@
-import type { Analysis, GraphResponse, RenovationData, ScenarioChange, ScenarioResult, Summary } from "../shared/types.js";
-import { blockers, RenovationRuntime, schedule } from "./graph.js";
-
-function addDays(date: string, days: number): string {
-  const result = new Date(`${date}T00:00:00Z`);
-  result.setUTCDate(result.getUTCDate() + days);
-  return result.toISOString().slice(0, 10);
-}
-
-export function analyze(data: RenovationData): Analysis {
-  const entries = schedule(data);
-  const durationDays = Math.max(0, ...entries.map((entry) => entry.earliestFinish));
-  const resourceConflicts = entries.flatMap((entry) => entry.resourceDelayDays > 0 ? entry.professionalIds.map((professionalId) => ({ professionalId, taskIds: (data.assignments ?? []).filter((assignment) => assignment.professionalId === professionalId).map((assignment) => assignment.taskId), delayedTaskId: entry.nodeId, delayDays: entry.resourceDelayDays })) : []);
-  return { schedule: entries, durationDays, criticalPath: entries.filter((entry) => entry.critical).sort((a, b) => a.earliestStart - b.earliestStart).map((entry) => entry.nodeId), completionDate: addDays(data.renovation.startDate, durationDays), resourceConflicts };
-}
-
-export function summary(data: RenovationData, analysis = analyze(data)): Summary {
-  const tasks = data.nodes.filter((node) => node.type === "TASK");
-  const readyTasks = tasks.filter((node) => node.status === "READY").length;
-  const blockedTasks = tasks.filter((node) => node.status === "BLOCKED").length;
-  return {
-    progress: tasks.length ? tasks.filter((node) => node.status === "COMPLETED").length / tasks.length : 0,
-    budget: data.renovation.budget,
-    estimatedCost: data.nodes.reduce((total, node) => total + (node.estimatedCost ?? 0), 0),
-    actualCost: data.nodes.reduce((total, node) => total + (node.actualCost ?? 0), 0),
-    completionDate: analysis.completionDate,
-    readyTasks,
-    blockedTasks,
-    criticalPathDurationDays: analysis.durationDays,
-    totalTasks: tasks.length,
-  };
-}
+import type { Analysis, CriticalState, ProjectForecast, GraphResponse, RenovationData, ScenarioChange, ScenarioResult } from "../shared/types.js";
+import { RenovationRuntime } from "./graph.js";
+import { applyScenarioChanges } from "./commands.js";
+import { blockers } from "./domain.js";
+import { analyze, summary } from "./forecast.js";
+export { analyze, summary } from "./forecast.js";
 
 export function graphResponse(data: RenovationData, analysis = analyze(data)): GraphResponse {
   const entryById = new Map(analysis.schedule.map((entry) => [entry.nodeId, entry]));
+  const byId = new Map(data.nodes.map((node) => [node.id, node]));
+  const state = (critical: boolean, nodeId: string): CriticalState => !critical ? "NONE" : byId.get(nodeId)?.status === "COMPLETED" ? "HISTORICAL" : "ACTIVE";
+  // Two zero-slack endpoints alone do not make an edge part of the driving path.
+  const drivesFinish = (predecessorId: string, successorId: string) => {
+    const previous = entryById.get(predecessorId);
+    const next = entryById.get(successorId);
+    return Boolean(previous?.critical && next?.critical && previous.earliestFinish === next.earliestStart);
+  };
   const graphNodes = data.nodes.map((node) => {
     const explanation = node.status === "BLOCKED" ? blockers(data, node.id) : undefined;
-    return { ...node, label: node.name, critical: entryById.get(node.id)?.critical ?? false, blockedBy: explanation?.blockedBy ?? [], rootBlockers: explanation?.rootBlockers ?? [] };
+    const critical = entryById.get(node.id)?.critical ?? false;
+    return { ...node, label: node.name, critical, criticalState: state(critical, node.id), blockedBy: explanation?.blockedBy ?? [], rootBlockers: explanation?.rootBlockers ?? [] };
   });
-  const edges = data.relationships.map((edge) => ({ ...edge, source: edge.fromNodeId, target: edge.toNodeId, critical: Boolean(entryById.get(edge.fromNodeId)?.critical && entryById.get(edge.toNodeId)?.critical) }));
-  return { nodes: graphNodes, edges, analysis };
-}
-
-function applyChanges(data: RenovationData, changes: ScenarioChange[]): void {
-  for (const change of changes) {
-    const node = data.nodes.find((candidate) => candidate.id === change.nodeId);
-    if (!node) throw new Error("NODE_NOT_FOUND");
-    const selectedOption = node.type === "MATERIAL" ? node.options?.find((option) => option.id === node.selectedOptionId) ?? node.options?.[0] : undefined;
-    if (node.type === "MATERIAL") {
-      const deliveryDelta = change.deliveryDeltaDays ?? change.durationDeltaDays;
-      const newDelivery = change.newDeliveryDays ?? change.newDurationDays;
-      if (!selectedOption && (deliveryDelta !== undefined || newDelivery !== undefined)) throw new Error("MATERIAL_OPTION_NOT_FOUND");
-      if (deliveryDelta !== undefined && selectedOption) selectedOption.deliveryDays = Math.max(0, selectedOption.deliveryDays + deliveryDelta);
-      if (newDelivery !== undefined && selectedOption) selectedOption.deliveryDays = Math.max(0, newDelivery);
-    } else {
-      if (change.durationDeltaDays !== undefined) node.durationDays = Math.max(0, (node.durationDays ?? 0) + change.durationDeltaDays);
-      if (change.newDurationDays !== undefined) node.durationDays = Math.max(0, change.newDurationDays);
-    }
-    if (change.newStatus) node.status = change.newStatus;
-    if (change.estimatedCostDelta !== undefined) {
-      if (node.type === "MATERIAL" && selectedOption) {
-        selectedOption.estimatedCost += change.estimatedCostDelta;
-        node.estimatedCost = selectedOption.estimatedCost;
-      } else {
-        node.estimatedCost = (node.estimatedCost ?? 0) + change.estimatedCostDelta;
-      }
-    }
-  }
+  const edges = data.relationships.map((edge) => {
+    const critical = edge.type === "DEPENDS_ON" && drivesFinish(edge.toNodeId, edge.fromNodeId);
+    return { ...edge, source: edge.fromNodeId, target: edge.toNodeId, critical, criticalState: state(critical, edge.fromNodeId) };
+  });
+  const resourceEdges = analysis.resourceLinks.map((link) => {
+    const professional = data.professionals?.find((person) => person.id === link.professionalId);
+    return { ...link, id: `resource:${link.professionalId}:${link.predecessorTaskId}:${link.successorTaskId}`,
+      source: link.predecessorTaskId, target: link.successorTaskId,
+      professionalName: professional?.name ?? link.professionalId, trade: professional?.trade ?? "Shared crew",
+      criticalState: state(drivesFinish(link.predecessorTaskId, link.successorTaskId), link.successorTaskId),
+    };
+  });
+  return { nodes: graphNodes, edges, resourceEdges, analysis };
 }
 
 function selectedDeliveryDays(data: RenovationData, nodeId: string): number {
@@ -89,7 +56,7 @@ function affectedNodes(baseline: RenovationData, changed: RenovationData, change
 
 export function simulatePure(baseline: RenovationData, name: string, changes: ScenarioChange[]): ScenarioResult {
   const changed: RenovationData = structuredClone(baseline);
-  applyChanges(changed, changes);
+  applyScenarioChanges(changed, changes);
   const baselineAnalysis = analyze(baseline);
   const scenarioAnalysis = analyze(changed);
   const affected = affectedNodes(baseline, changed, changes, baselineAnalysis, scenarioAnalysis);
@@ -106,19 +73,20 @@ export function simulatePure(baseline: RenovationData, name: string, changes: Sc
   };
 }
 
-export async function simulate(baseline: RenovationData, name: string, changes: ScenarioChange[]): Promise<ScenarioResult> {
+export async function simulate(baseline: RenovationData, name: string, changes: ScenarioChange[], baselineForecast?: ProjectForecast): Promise<ScenarioResult> {
   const changed: RenovationData = structuredClone(baseline);
-  applyChanges(changed, changes);
+  applyScenarioChanges(changed, changes);
   const scenarioRuntime = new RenovationRuntime(changed, { role: "scenario" });
   try {
     await scenarioRuntime.ready();
     scenarioRuntime.refresh();
     scenarioRuntime.deriveStatuses();
-    const baselineAnalysis = analyze(baseline);
-    const scenarioAnalysis = analyze(changed);
+    const baselineAnalysis = baselineForecast?.analysis ?? analyze(baseline);
+    const scenarioForecast = scenarioRuntime.forecast();
+    const scenarioAnalysis = scenarioForecast.analysis;
     const affected = affectedNodes(baseline, changed, changes, baselineAnalysis, scenarioAnalysis);
-    const baselineCost = summary(baseline, baselineAnalysis).estimatedCost;
-    const scenarioCost = summary(changed, scenarioAnalysis).estimatedCost;
+    const baselineCost = (baselineForecast?.summary ?? summary(baseline, baselineAnalysis)).estimatedCost;
+    const scenarioCost = scenarioForecast.summary.estimatedCost;
     return {
       scenario: name,
       baseline: { completionDate: baselineAnalysis.completionDate, estimatedCost: baselineCost },

@@ -24,7 +24,7 @@ function RenovationNodeCard({ data }: NodeProps<FlowNode>) {
     <>
       <Handle type="target" position={Position.Top} className="handle" />
       <button
-        className={`graph-card ${data.type.toLowerCase()} ${data.status.toLowerCase()} ${data.critical ? "critical" : ""}`}
+        className={`graph-card ${data.type.toLowerCase()} ${data.status.toLowerCase()} ${data.criticalState === "ACTIVE" ? "critical" : data.criticalState === "HISTORICAL" ? "historical-critical" : ""}`}
         onClick={() => data.onSelect?.(data)}
       >
         <span className="card-kicker">
@@ -43,12 +43,29 @@ function RenovationNodeCard({ data }: NodeProps<FlowNode>) {
           {data.delayDays ? ` + ${data.delayDays}d delay` : ""}
           {data.estimatedCost ? ` · ${money.format(data.estimatedCost)}` : ""}
         </span>
-        {data.critical && <span className="critical-badge">CRITICAL</span>}
+        {data.criticalState === "ACTIVE" && (
+          <span className="critical-badge">CRITICAL · REMAINING</span>
+        )}
+        {data.criticalState === "HISTORICAL" && (
+          <span className="historical-badge">COMPLETED PATH</span>
+        )}
         {data.scenarioDelta !== undefined && data.scenarioDelta !== 0 && (
           <span className="delta-badge">+{data.scenarioDelta}d</span>
         )}
       </button>
       <Handle type="source" position={Position.Bottom} className="handle" />
+      <Handle
+        id="crew-out"
+        type="source"
+        position={Position.Right}
+        className="handle"
+      />
+      <Handle
+        id="crew-in"
+        type="target"
+        position={Position.Left}
+        className="handle"
+      />
     </>
   );
 }
