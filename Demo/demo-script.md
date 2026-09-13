@@ -2,9 +2,7 @@
 
 [Watch the video](renograph-contest-demo.mp4) · [English captions](renograph-contest-demo.srt)
 
-The 1080p landscape walkthrough explains the application's practical workflows and their Wavebinder implementation. It uses fresh captures of the running application, edited with focus crops, explanatory overlays and English synthetic narration. The source scenes were captured in an isolated Casa Rossi sample instance; the working project was not reset for recording.
-
-The edit runs approximately **2 minutes 49 seconds**, including the opening and closing. Page 2 of the [official contest rules](https://wavebinder.it/assets/20260122084134.pdf) specifies a maximum three-minute video. Contest framing is confined to this walkthrough; RenoGraph remains a general renovation application.
+Follow the Casa Rossi renovation to see how Wavebinder connects tasks, materials and decisions to the project’s cost and completion date.
 
 ## Chapters
 
@@ -24,7 +22,7 @@ The edit runs approximately **2 minutes 49 seconds**, including the opening and 
 | 2:21 | Show the cause, not just the result | Mutation ID + before/after values |
 | 2:36 | A practical use of Wavebinder | Reactive engine + explicit domain rules |
 
-## Technical boundaries
+## How the integration works
 
 - Wavebinder owns dependency state, SINGLE facts, MULTI selections, COMPLEX projections, LIST bundles and reactive propagation.
 - Native GET loading runs in a disposable supplier runtime. Its validated response updates the persistent project's material-option facts. The supplier is explicitly a local demo fixture; no commercial order is placed.
@@ -45,8 +43,6 @@ Set a valid `WAVEBINDER_LICENSE` in an ignored `.env` file or environment variab
 5. Run a fourteen-day, €350 Kitchen plumbing scenario. Compare its October 16 completion against the October 2 baseline and its six affected tasks. The scenario is isolated.
 6. Create a work package in another tab and observe it arrive in the first. Use edit mode for manual constraints and dependency changes; inspect mutation sources and before/after values.
 7. Show separate project creation, people, purchases and supporting records. End by explaining the engine/domain boundary and the measured verification results.
-
-The video is an edited walkthrough of captured application states, rather than an uncut real-time session. Example workflows are presented as separate demonstrations; the overview and detailed crops are from the same source capture within each shot.
 
 ## Narration transcript
 
