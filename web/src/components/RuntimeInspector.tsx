@@ -1,3 +1,4 @@
+import { runtimeName } from "../../../src/shared/runtime.js";
 import type {
   GraphNode,
   GraphResponse,
@@ -20,22 +21,22 @@ export function RuntimeInspector({
   const ownKeys =
     node.type === "TASK"
       ? [
-          `${node.id}__completed`,
-          `${node.id}__in_progress`,
-          `${node.id}__planned_duration`,
-          `${node.id}__actual_duration`,
-          `${node.id}__delay_days`,
-          `${node.id}__manual_clear`,
-          `${node.id}__ready`,
-          `${node.id}__state`,
+          runtimeName(node.id, "completed"),
+          runtimeName(node.id, "in_progress"),
+          runtimeName(node.id, "planned_duration"),
+          runtimeName(node.id, "actual_duration"),
+          runtimeName(node.id, "delay_days"),
+          runtimeName(node.id, "manual_clear"),
+          runtimeName(node.id, "ready"),
+          runtimeName(node.id, "state"),
         ]
       : node.type === "MATERIAL"
         ? [
-            `${node.id}__delivered`,
-            `${node.id}__option`,
-            `${node.id}__available`,
+            runtimeName(node.id, "delivered"),
+            runtimeName(node.id, "option"),
+            runtimeName(node.id, "available"),
           ]
-        : [`${node.id}__materials`];
+        : [runtimeName(node.id, "materials")];
   const inputs = (graph?.edges ?? [])
     .filter((edge) => edge.source === node.id && edge.type !== "LOCATED_IN")
     .map((edge) => {
@@ -44,8 +45,8 @@ export function RuntimeInspector({
       );
       const key =
         upstream?.type === "MATERIAL"
-          ? `${edge.target}__available`
-          : `${edge.target}__completed`;
+          ? runtimeName(edge.target, "available")
+          : runtimeName(edge.target, "completed");
       return {
         id: edge.id,
         label: upstream?.name ?? edge.target,
@@ -53,15 +54,18 @@ export function RuntimeInspector({
       };
     });
   const roomBundle =
-    node.type === "ROOM" && Array.isArray(pool[`${node.id}__materials`])
-      ? (pool[`${node.id}__materials`] as RoomMaterialRequirement[])
+    node.type === "ROOM" &&
+    Array.isArray(pool[runtimeName(node.id, "materials")])
+      ? (pool[runtimeName(node.id, "materials")] as RoomMaterialRequirement[])
       : [];
   return (
     <details className="runtime-inspector" open>
       <summary>
         <span>
           <span className="live-dot" />
-          WAVEBINDER LIVE STATE
+          {graph?.runtime?.snapshot
+            ? "WAVEBINDER SCENARIO SNAPSHOT"
+            : "WAVEBINDER LIVE STATE"}
         </span>
         <small>{ownKeys.length + inputs.length} signals</small>
       </summary>

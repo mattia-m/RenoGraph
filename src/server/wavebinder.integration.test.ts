@@ -16,7 +16,7 @@ test("licensed Wavebinder runtime propagates multi-source renovation readiness",
   assert.ok(info.complexNodeCount > 0);
   assert.ok(info.multiNodeCount > 0);
   assert.ok(info.listNodeCount > 0);
-  assert.equal(info.subscriptionCount, data.nodes.filter((node) => node.type === "TASK").length);
+  assert.ok(info.subscriptionCount > data.nodes.filter((node) => node.type === "TASK").length);
   const bathroomMaterials = info.dataPool["bathroom__materials"] as Array<Record<string, unknown>>;
   assert.ok(Array.isArray(bathroomMaterials));
   assert.equal(bathroomMaterials.length, 2);
@@ -154,4 +154,21 @@ test("licensed initialization wires every room and project root before populatin
   const project = runtime.binder.getNodeByName("__project_forecast");
   assert.equal(project.depValues.size, project.node.dep.length);
   assert.ok(runtime.forecast().analysis.durationDays > 0);
+});
+
+test("licensed telemetry counts beyond retention and ignores unchanged facts", { skip: !licensed }, async (t) => {
+  const runtime = new RenovationRuntime(createDemoData()); t.after(() => runtime.dispose()); await runtime.ready();
+  const before = runtime.runtimeInfo().eventCount;
+  runtime.refresh(); assert.equal(runtime.runtimeInfo().eventCount, before);
+  for (let index = 0; index < 40; index++) {
+    runtime.beginMutation("telemetry test");
+    runtime.data.nodes.find((node) => node.id === "bathroom-plumbing")!.delayDays = index + 1;
+    runtime.refresh();
+  }
+  assert.ok(runtime.runtimeInfo().eventCount > 100);
+  assert.equal(runtime.recentEvents().length, 100);
+  assert.ok(runtime.recentEvents().some((event) => event.kind === "FACT" && event.before !== event.after));
+  runtime.dispose(); runtime.dispose();
+  assert.equal(runtime.runtimeInfo().subscriptionCount, 0);
+  assert.equal(runtime.runtimeInfo().ready, false);
 });

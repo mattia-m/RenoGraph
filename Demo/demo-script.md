@@ -1,6 +1,6 @@
 # Renograph Demo Script
 
-This is the deterministic contest demo. Start from a clean baseline before
+This is the repeatable product walkthrough. Start from a clean baseline before
 each run:
 
 ```bash
@@ -13,7 +13,7 @@ Open `http://localhost:5173`.
 ## Recorded Walkthrough
 
 The repository includes a
-[95-second narrated contest demo](renograph-contest-demo.mp4) captured from the
+[95-second narrated product tour](renograph-contest-demo.mp4) captured from the
 runnable Casa Rossi application.
 
 | Time | Scene |
@@ -29,7 +29,7 @@ runnable Casa Rossi application.
 | 1:14 | Professionals, resource conflicts, purchases and documents |
 | 1:25 | Architecture summary |
 
-## Full Interactive Judge Flow
+## Interactive Walkthrough
 
 1. Open Casa Rossi.
 2. Inspect the graph, relationships and Wavebinder telemetry. Select a task to
@@ -64,7 +64,7 @@ runnable Casa Rossi application.
 25. Show a professional conflict and inspect a linked purchase, document or
     contractor workflow.
 
-## Strong Judge Moments
+## Key Workflows
 
 ### Multi-input readiness
 

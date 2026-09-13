@@ -1,3 +1,4 @@
+import "./env.js";
 import { ComplexNode, ListNode, MultiNode, WaveBinder } from "wave-binder";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -29,7 +30,7 @@ export {
 
 type ProtoNode = ConstructorParameters<typeof WaveBinder>[1][number];
 type CustomFunction = ConstructorParameters<typeof WaveBinder>[3][number];
-const name = (id: string, field: string) => `${id}__${field}`;
+import { runtimeName as name, type RuntimeEvent } from "../shared/runtime.js";
 const dep = (nodeName: string, optional = false): ProtoNode["dep"][number] => ({
   nodeName,
   parameterName: nodeName,
@@ -85,11 +86,14 @@ export class RenovationRuntime {
   readonly rebuildCount: number;
   private readonly subscriptions: Array<{ unsubscribe(): void }> = [];
   private readonly taskStateProjection = new Map<string, TaskForecast>();
-  private readonly events: Array<{
-    nodeId: string;
-    status: string;
-    at: string;
-  }> = [];
+  private readonly events: RuntimeEvent[] = [];
+  private totalEvents = 0;
+  private mutationId = randomUUID();
+  private source = "initialization";
+  beginMutation(source: string): void {
+    this.mutationId = randomUUID();
+    this.source = source;
+  }
   private initialized = false;
   private disposed = false;
 
@@ -107,11 +111,11 @@ export class RenovationRuntime {
       single("__project_facts", this.projectFacts()),
     ];
     const customFunctions: CustomFunction[] = [];
-    const derived = (
+    const derived = <Args extends unknown[], Result>(
       nodeName: string,
       type: string,
       dependencies: ProtoNode["dep"],
-      implementation: Function,
+      implementation: (...args: Args) => Result,
       extra: Partial<ProtoNode> = {},
     ) => {
       protoNodes.push({
@@ -393,20 +397,56 @@ export class RenovationRuntime {
             const previous = this.taskStateProjection.get(task.id);
             if (isDeepStrictEqual(previous, value)) return;
             this.taskStateProjection.set(task.id, structuredClone(value));
-            this.record(task.id, value.status);
+            this.record(task.id, value.status, "DERIVED", previous, value);
           }),
+      );
+    }
+    for (const root of this.binder
+      .getNodes()
+      .filter(
+        (item) =>
+          item.node.name === "__project_forecast" ||
+          item.node.name.endsWith("__material_state") ||
+          item.node.name.endsWith("__materials"),
+      )) {
+      let previous: unknown;
+      this.subscriptions.push(
+        root.subscribe((value: unknown) => {
+          if (value == null || isDeepStrictEqual(previous, value)) return;
+          this.record(root.node.name, "RECOMPUTED", "DERIVED", previous, value);
+          previous = structuredClone(value);
+        }),
       );
     }
   }
 
-  private record(nodeId: string, status: string): void {
-    this.events.push({ nodeId, status, at: new Date().toISOString() });
+  private record(
+    nodeId: string,
+    status: string,
+    kind: RuntimeEvent["kind"] = "FACT",
+    before?: unknown,
+    after?: unknown,
+  ): void {
+    this.totalEvents += 1;
+    this.events.push(
+      structuredClone({
+        nodeId,
+        status,
+        kind,
+        before,
+        after,
+        mutationId: this.mutationId,
+        source: this.source,
+        at: new Date().toISOString(),
+      }),
+    );
     if (this.events.length > 100) this.events.shift();
   }
 
   private write(nodeName: string, value: unknown): boolean {
     const node = this.binder.getNodeByName(nodeName);
     if (isDeepStrictEqual(node.getNodeValue(), value)) return false;
+    this.record(nodeName, "UPDATED", "FACT", node.getNodeValue(), value);
     node.next(structuredClone(value));
     return true;
   }
@@ -431,8 +471,16 @@ export class RenovationRuntime {
         option &&
         (catalogChanged ||
           !isDeepStrictEqual(optionNode.getNodeValue(), option))
-      )
+      ) {
+        this.record(
+          name(nodeId, "option"),
+          "SELECTED",
+          "FACT",
+          optionNode.getNodeValue(),
+          option,
+        );
         optionNode.setSelection(node.options!.indexOf(option));
+      }
       return;
     }
     const facts: Record<string, unknown> = {
@@ -477,7 +525,7 @@ export class RenovationRuntime {
     return this.taskState(nodeId).status === "READY";
   }
   forecast(): ProjectForecast {
-    if (!this.binder.isReady())
+    if (this.disposed || !this.binder.isReady())
       throw new Error("Wavebinder runtime is not ready");
     const forecast = this.binder
       .getNodeByName("__project_forecast")
@@ -493,7 +541,7 @@ export class RenovationRuntime {
   runtimeInfo() {
     const nodes = this.binder.getNodes();
     return {
-      ready: this.binder.isReady(),
+      ready: this.initialized && !this.disposed && this.binder.isReady(),
       nodeCount: nodes.length,
       dependencyCount: nodes.reduce(
         (total, node) => total + node.node.dep.length,
@@ -511,7 +559,8 @@ export class RenovationRuntime {
       role: this.role,
       createdAt: this.createdAt,
       rebuildCount: this.rebuildCount,
-      eventCount: this.events.length,
+      eventCount: this.totalEvents,
+      retainedEventCount: this.events.length,
       lastEvent: this.events.at(-1)
         ? `${this.events.at(-1)!.nodeId}:${this.events.at(-1)!.status}`
         : undefined,
@@ -522,7 +571,7 @@ export class RenovationRuntime {
     };
   }
   recentEvents() {
-    return this.events.slice(-12).reverse();
+    return structuredClone(this.events.slice(-100).reverse());
   }
   dispose(): void {
     if (this.disposed) return;

@@ -33,6 +33,8 @@ import {
   type NodePatch,
 } from "./commands.js";
 
+import { loadSupplierQuote } from "./supplier.js";
+
 export type StoreRuntime = Pick<
   RenovationRuntime,
   | "data"
@@ -55,6 +57,42 @@ export class RenovationStore {
     return this.currentData;
   }
   runtime: StoreRuntime;
+  private readonly supplierRequests = new Map<string, AbortController>();
+  revision = 0;
+  private disposed = false;
+  private readonly listeners = new Set<() => void>();
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  private publish(): void {
+    this.revision += 1;
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        /* A disconnected client cannot fail a committed write. */
+      }
+    }
+  }
+  getSnapshot() {
+    return {
+      revision: this.revision,
+      graph: this.getGraph(),
+      summary: this.getSummary(),
+      events: this.getEvents(),
+      renovation: this.data.renovation,
+      operations: this.getOperations(),
+    };
+  }
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    for (const request of this.supplierRequests.values()) request.abort();
+    this.supplierRequests.clear();
+    await this.mutationQueue;
+    this.listeners.clear();
+    this.runtime.dispose();
+  }
   private rebuilds = 0;
   private readonly history: RenovationData[] = [];
   private readonly initialData: RenovationData;
@@ -139,24 +177,32 @@ export class RenovationStore {
   }
 
   private enqueue<T>(operation: () => T | Promise<T>): Promise<T> {
+    if (this.disposed) return Promise.reject(new Error("STORE_NOT_READY"));
     const result = this.mutationQueue.then(operation);
     this.mutationQueue = result.catch(() => undefined);
     return result;
   }
 
-  private mutate<T>(operation: (candidate: RenovationData) => T): Promise<T> {
+  private mutate<T>(
+    operation: (candidate: RenovationData) => T,
+    source = "workspace edit",
+  ): Promise<T> {
     return this.enqueue(() => {
       const previous = this.data;
       const candidate = structuredClone(previous);
       const result = operation(candidate);
       try {
         // This section is synchronous: readers cannot observe a partially committed mutation.
+        if (this.runtime instanceof RenovationRuntime)
+          this.runtime.beginMutation(source);
         this.runtime.data = candidate;
         this.runtime.refresh();
         this.runtime.deriveStatuses();
         this.runtime.forecast();
         this.persist(candidate);
       } catch (error) {
+        if (this.runtime instanceof RenovationRuntime)
+          this.runtime.beginMutation("rollback");
         this.runtime.data = previous;
         this.runtime.refresh();
         this.runtime.deriveStatuses();
@@ -164,6 +210,7 @@ export class RenovationStore {
       }
       this.currentData = candidate;
       this.pushHistory(previous);
+      this.publish();
       return result;
     });
   }
@@ -199,6 +246,7 @@ export class RenovationStore {
     this.rebuilds += 1;
     if (undo) this.history.pop();
     else this.pushHistory(previousData);
+    this.publish();
     // Commit has succeeded; teardown errors must not turn it into a reported rollback.
     try {
       previous.dispose();
@@ -247,6 +295,38 @@ export class RenovationStore {
   }
   getNode(nodeId: string) {
     return this.data.nodes.find((node) => node.id === nodeId);
+  }
+
+  async refreshSupplierQuote(nodeId: string, baseUrl: string, fail = false) {
+    const material = findNode(this.data, nodeId);
+    const optionId = material.selectedOptionId;
+    if (material.type !== "MATERIAL" || !optionId)
+      throw new Error("MATERIAL_OPTION_NOT_FOUND");
+    this.supplierRequests.get(nodeId)?.abort();
+    const request = new AbortController();
+    this.supplierRequests.set(nodeId, request);
+    const revision = this.revision;
+    try {
+      const quote = await loadSupplierQuote(
+        baseUrl,
+        optionId,
+        fail,
+        request.signal,
+      );
+      await this.mutate((data) => {
+        if (
+          this.supplierRequests.get(nodeId) !== request ||
+          this.revision !== revision ||
+          findNode(data, nodeId).selectedOptionId !== optionId
+        )
+          throw new Error("SUPPLIER_STALE_RETRY");
+        patchMaterialOption(data, nodeId, optionId, quote);
+      }, "supplier quote via Wavebinder GET");
+      return quote;
+    } finally {
+      if (this.supplierRequests.get(nodeId) === request)
+        this.supplierRequests.delete(nodeId);
+    }
   }
 
   addProfessional(
@@ -317,19 +397,41 @@ export class RenovationStore {
     return this.mutate((data) => {
       if (!input.description?.trim()) throw new Error("INVALID_PURCHASE");
       nonnegative(input.amount, "INVALID_PURCHASE");
+      if (!["REQUESTED", "ORDERED", "RECEIVED"].includes(input.status))
+        throw new Error("INVALID_PURCHASE");
+      if (
+        input.materialId &&
+        findNode(data, input.materialId).type !== "MATERIAL"
+      )
+        throw new Error("INVALID_PURCHASE_MATERIAL");
+      if (
+        input.contractorId &&
+        !data.contractors!.some((item) => item.id === input.contractorId)
+      )
+        throw new Error("INVALID_CONTRACTOR");
       const item = { ...input, id: `purchase-${randomUUID()}` };
       data.purchases!.push(item);
+      if (item.status === "RECEIVED" && item.materialId)
+        patchNode(data, item.materialId, { status: "COMPLETED" }, true);
       return item;
-    });
+    }, "purchase created");
   }
   updatePurchase(id: string, status: Purchase["status"]): Promise<Purchase> {
     return this.mutate((data) => {
       const item = data.purchases!.find((candidate) => candidate.id === id);
       if (!item || !["REQUESTED", "ORDERED", "RECEIVED"].includes(status))
         throw new Error("INVALID_PURCHASE");
+      if (
+        item.status === "RECEIVED" &&
+        status !== "RECEIVED" &&
+        item.materialId
+      )
+        throw new Error("USE_UNDO_TO_REVERSE_RECEIPT");
       item.status = status;
+      if (status === "RECEIVED" && item.materialId)
+        patchNode(data, item.materialId, { status: "COMPLETED" }, true);
       return item;
-    });
+    }, "purchase status");
   }
   addDocument(input: Omit<ProjectDocument, "id">): Promise<ProjectDocument> {
     return this.mutate((data) => {

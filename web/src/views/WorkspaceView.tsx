@@ -1,3 +1,4 @@
+import { SupplierQuote } from "../components/SupplierQuote.js";
 import { useEffect, useMemo, useState } from "react";
 import { Background, Controls, MiniMap, ReactFlow } from "@xyflow/react";
 import type { Edge } from "@xyflow/react";
@@ -71,6 +72,7 @@ export function WorkspaceView() {
     busy,
     error,
     events,
+    connection,
     editMode,
     setEditMode,
     createOpen,
@@ -139,7 +141,9 @@ export function WorkspaceView() {
         </div>
         <div className="header-state">
           <span className="live-dot" />
-          LIVE GRAPH
+          {displayedGraph?.runtime?.snapshot
+            ? "SCENARIO SNAPSHOT"
+            : `${connection.toUpperCase()} GRAPH`}
         </div>
       </header>
       {error && graph && <div className="inline-error">{error}</div>}
@@ -273,6 +277,25 @@ export function WorkspaceView() {
                 <span className="event-pulse" />
                 {event.nodeId.replaceAll("-", " ")}
                 <b>{event.status}</b>
+                <details>
+                  <summary>
+                    {event.source} · {event.kind.toLowerCase()}
+                  </summary>
+                  <small>Mutation {event.mutationId}</small>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      maxHeight: 180,
+                      overflow: "auto",
+                    }}
+                  >
+                    {JSON.stringify(
+                      { before: event.before, after: event.after },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </details>
               </div>
             ))}
           </div>
@@ -285,13 +308,16 @@ export function WorkspaceView() {
             </div>
             <div className="runtime-chip">
               <span className="live-dot" />
-              WAVEBINDER <b>{graph?.runtime?.nodeCount ?? 0}</b> nodes{" "}
-              <b>{graph?.runtime?.dependencyCount ?? 0}</b> links{" "}
+              {displayedGraph?.runtime?.snapshot
+                ? "SNAPSHOT"
+                : connection.toUpperCase()}{" "}
+              · WAVEBINDER <b>{displayedGraph?.runtime?.nodeCount ?? 0}</b>{" "}
+              nodes <b>{displayedGraph?.runtime?.dependencyCount ?? 0}</b> links{" "}
               <small>
-                C{graph?.runtime?.complexNodeCount ?? 0} / M
-                {graph?.runtime?.multiNodeCount ?? 0} / L
-                {graph?.runtime?.listNodeCount ?? 0} / S
-                {graph?.runtime?.subscriptionCount ?? 0}
+                C{displayedGraph?.runtime?.complexNodeCount ?? 0} / M
+                {displayedGraph?.runtime?.multiNodeCount ?? 0} / L
+                {displayedGraph?.runtime?.listNodeCount ?? 0} / S
+                {displayedGraph?.runtime?.subscriptionCount ?? 0}
               </small>
             </div>
             <div className="toolbar-actions">
@@ -416,13 +442,46 @@ export function WorkspaceView() {
                   busy={busy}
                 />
                 {selectedNode.type === "MATERIAL" && selectedNode.options && (
-                  <MaterialOptions
-                    options={selectedNode.options}
-                    selectedOptionId={selectedNode.selectedOptionId}
-                    onSelect={selectMaterialOption}
-                  />
+                  <>
+                    <SupplierQuote
+                      key={`${renovationId}:${selectedNode.id}:${selectedNode.selectedOptionId}`}
+                      renovationId={renovationId}
+                      nodeId={selectedNode.id}
+                      optionId={selectedNode.selectedOptionId}
+                    />
+                    <MaterialOptions
+                      options={selectedNode.options}
+                      selectedOptionId={selectedNode.selectedOptionId}
+                      onSelect={selectMaterialOption}
+                    />
+                  </>
                 )}
                 <RuntimeInspector node={selectedNode} graph={displayedGraph} />
+                {scenario && (
+                  <details>
+                    <summary>
+                      Scenario propagation ·{" "}
+                      {scenario.propagation?.filter(
+                        (event) => event.source === "scenario",
+                      ).length ?? 0}{" "}
+                      retained events
+                    </summary>
+                    <p>
+                      Captured after changing an initialized runtime. The
+                      scenario runtime has been disposed.
+                    </p>
+                    {scenario.affectedNodes.map((item) => (
+                      <p key={item.id}>
+                        {item.name}:{" "}
+                        {item.beforeStatus &&
+                        item.beforeStatus !== item.afterStatus
+                          ? `${item.beforeStatus} → ${item.afterStatus} · `
+                          : ""}
+                        {item.scheduleDeltaDays} days
+                      </p>
+                    ))}
+                  </details>
+                )}
               </>
             )
           ) : (

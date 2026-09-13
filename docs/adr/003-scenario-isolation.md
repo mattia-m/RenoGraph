@@ -12,5 +12,5 @@ disposed with `nukeNodes()` after comparison.
 ## Consequences
 
 Baseline and scenario Wavebinder instances are independent. Scenario creation
-has the cost of runtime construction, which is acceptable at contest scale and
-provides a clear isolation guarantee.
+includes runtime construction cost in exchange for isolation. The benchmark
+measures this overhead separately from changes to an existing runtime.

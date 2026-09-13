@@ -54,6 +54,7 @@ class TestRuntime implements StoreRuntime {
       createdAt: "",
       rebuildCount: this.count,
       eventCount: 0,
+      retainedEventCount: 0,
       lastEvent: undefined,
       dataPool: {},
     };

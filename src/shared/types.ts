@@ -152,6 +152,8 @@ export interface GraphResponse {
   resourceEdges: ResourceGraphEdge[];
   analysis: Analysis;
   runtime?: {
+    snapshot?: boolean;
+    retainedEventCount?: number;
     ready: boolean;
     nodeCount: number;
     dependencyCount: number;
@@ -195,11 +197,12 @@ export interface ScenarioChange {
 }
 
 export interface ScenarioResult {
+  propagation?: import("./runtime.js").RuntimeEvent[];
   scenario: string;
   baseline: { completionDate: string; estimatedCost: number };
   scenarioResult: { completionDate: string; estimatedCost: number };
   impact: { delayDays: number; additionalCost: number; criticalPathChanged: boolean };
-  affectedNodes: Array<{ id: string; name: string; scheduleDeltaDays: number }>;
+  affectedNodes: Array<{ id: string; name: string; scheduleDeltaDays: number; beforeStatus?: NodeStatus; afterStatus?: NodeStatus }>;
   affectedChain: string[];
   graph: GraphResponse;
 }

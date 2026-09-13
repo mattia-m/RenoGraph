@@ -4,15 +4,16 @@ Renograph turns a renovation into a living dependency graph. It shows what is
 ready, what is blocked and why, which activities determine the finish date, and
 what happens when a task changes.
 
-The contest MVP is a complete runnable application around the canonical Casa
-Rossi renovation. It uses Wavebinder as the live reactive dependency runtime,
+Renograph supports renovation projects with linked tasks, materials, purchases
+and shared professionals. Casa Rossi is the included sample project.
+It uses Wavebinder as the live reactive dependency runtime,
 while renovation-specific scheduling, critical-path analysis, costing and
 scenario comparison remain explicit Renograph domain logic.
 
 ## Demo
 
-- [Watch the 95-second narrated contest demo](Demo/renograph-contest-demo.mp4)
-- [Follow the complete demo script and judge runbook](Demo/demo-script.md)
+- [Watch the 95-second product tour](Demo/renograph-contest-demo.mp4)
+- [Follow the guided product walkthrough](Demo/demo-script.md)
 
 The video is captured from the runnable Casa Rossi application. It demonstrates
 the live Wavebinder graph, critical-path highlighting, blocker explanations,
@@ -37,7 +38,7 @@ the [`Demo/` package](Demo/).
 
 ## Quick Start
 
-Requirements: Node.js 20+ and a valid Wavebinder license.
+Requirements: Node.js 22.15+ and a valid Wavebinder license.
 
 ```bash
 git clone https://github.com/mattia-m/RenoGraph.git
@@ -51,7 +52,7 @@ Open `http://localhost:5173`.
 
 The API runs on `http://localhost:3001`. The frontend proxies `/api` to it.
 The supplied license must not be committed; use an environment variable or a
-local ignored `.env` file.
+local ignored `.env` file. Node 22.15+ is required; API, tests and benchmark load `.env` from the working directory without replacing exported variables.
 
 Production build:
 
@@ -80,7 +81,7 @@ docker compose up --build
 
 The [narrated video](Demo/renograph-contest-demo.mp4) follows this sequence. The
 [demo script](Demo/demo-script.md) also contains the longer interactive flow for
-a live jury walkthrough.
+hands-on exploration.
 
 ## Architecture
 
@@ -202,6 +203,10 @@ and undo/reset. Renovation operations are scoped below
 
 ## Testing
 
+Run `npm run verify` with a valid license exported or in `.env` for type checks, the complete test suite and a licensed benchmark. Verification fails immediately without a license so integration tests cannot silently be skipped. Run `npm run build` to produce the frontend bundle.
+
+Individual checks:
+
 ```bash
 npm run typecheck
 npm test
@@ -222,13 +227,14 @@ and material scenarios when
 `spike/`.
 
 The benchmark reports median and p95 timings for scheduling. With a license it
-also measures Wavebinder runtime construction and isolated scenario analysis.
-It reports the environment and never invents performance numbers.
+also measures runtime construction, fact propagation and isolated scenario analysis.
+The dataset contains 100 tasks and 200 unique dependency pairs. Each measurement
+warms up before sampling, and the report includes the execution environment.
 
 ## Technical Decisions
 
-- JSON persistence keeps the contest demo zero-setup and restart-safe.
-- PostgreSQL is intentionally not required for the MVP; the persistence seam is
+- JSON persistence provides local storage without a separate database service.
+- PostgreSQL is not required for local use; the persistence seam is
   isolated in `RenovationStore` for a later repository implementation.
 - Wavebinder is initialized only after a license is supplied and the API fails
   loudly if its runtime is unavailable.
@@ -242,11 +248,39 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/).
 
 ## Known Limitations
 
-- HTTP loading actions are not used yet; material options are deterministic
-  custom-function data so the demo remains offline-stable.
+- Supplier quotes use a deterministic local HTTP fixture, not a commercial supplier. Wavebinder 0.0.2 does not expose request cancellation: disposable GET runtimes and revision checks prevent stale application writes; an underlying HTTP request can still finish after disposal.
 - The local multi-project persistence layer is JSON rather than PostgreSQL.
 - Project runtimes are currently created eagerly at startup. A lazy or bounded
-  runtime cache is intentionally deferred while the portfolio remains a small
-  local contest demo.
+  runtime cache is not implemented; startup resource usage grows with the number
+  of saved projects.
 - A hosted deployment is not included; the repository provides the narrated
   demo video alongside local and Docker workflows.
+
+
+## Working with a project
+
+### Supplier quotes
+
+Select a material and choose **Update quote** to update its selected option's price, delivery time and availability. The included demo supplier returns a fixed quote: **€1,250, 3 days, available**. The panel labels this source as **Demo data**.
+
+Wavebinder loads the quote over HTTP. Applying it saves the selected option and recalculates room material lists, task readiness, estimated costs and the forecast. Other open tabs receive the update. **Undo** restores the previous state. Updating a quote does not place an order or mark a material delivered.
+
+**Test outage** simulates a supplier failure without changing project data; **Retry quote** requests the quote again. A pending quote is rejected if the project changes while it loads, so it cannot overwrite a newer selection or edit.
+
+### Purchases and delivery
+
+In **People & workflows → Purchases**, link an order to a material. Marking the order **RECEIVED** records the complete material delivery and updates readiness and the forecast in one saved transaction. Partial shipments are not supported. Use **Undo** to reverse a receipt; receipt does not overwrite estimated or actual costs.
+
+### Scenarios and live updates
+
+Scenarios compare proposed changes with the current project, including readiness changes, completion dates and costs. Each scenario applies changes to an initialized, independent Wavebinder runtime and captures the result before disposing it. The inspector labels this a **scenario snapshot**.
+
+The live workspace receives committed changes through server-sent events and reloads a consistent project snapshot on reconnect. Switching projects discards old requests. A baseline change clears an outdated scenario comparison.
+
+### Runtime diagnostics
+
+Propagation entries include the change source, mutation ID, fact or derived value, and before/after values. Initialization and rollback are labelled separately. Counters are cumulative per runtime; the log retains the latest 100 events. Topology changes create a new runtime and reset its counters. Intermediate derived emissions are diagnostics; the workspace displays committed snapshots.
+
+Health checks return 503 when runtimes are unavailable. Shutdown closes clients and disposes subscriptions and pending quote consumers. Partial startup failures also clean up initialized runtimes.
+
+See the [project walkthrough](docs/project-walkthrough.md) for a guided example. The recorded tour shows an earlier version; the written walkthrough covers the current workflows.

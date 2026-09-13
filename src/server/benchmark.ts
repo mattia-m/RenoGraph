@@ -1,3 +1,4 @@
+import "./env.js";
 import os from "node:os";
 import { performance } from "node:perf_hooks";
 import { simulate } from "./analysis.js";
@@ -5,16 +6,9 @@ import { RenovationRuntime, schedule } from "./graph.js";
 import type { RenovationData } from "../shared/types.js";
 
 const iterations = Number(process.env.BENCHMARK_ITERATIONS ?? 20);
+if (!Number.isInteger(iterations) || iterations < 1) throw new Error("BENCHMARK_ITERATIONS must be a positive integer");
 
-function dataset(): RenovationData {
-  const nodes = Array.from({ length: 100 }, (_, index) => ({ id: `task-${index}`, renovationId: "benchmark", type: "TASK" as const, name: `Task ${index}`, status: "PLANNED" as const, durationDays: (index % 5) + 1 }));
-  const relationships = Array.from({ length: 200 }, (_, index) => {
-    const from = (index % 99) + 1;
-    const to = Math.max(0, from - ((index % 4) + 1));
-    return { id: `edge-${index}`, renovationId: "benchmark", fromNodeId: `task-${from}`, toNodeId: `task-${to}`, type: "DEPENDS_ON" as const };
-  });
-  return { renovation: { id: "benchmark", name: "Benchmark", startDate: "2026-01-01", status: "PLANNING" }, nodes, relationships };
-}
+import { benchmarkData as dataset } from "./benchmarkData.js";
 
 function percentile(values: number[], point: number): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -22,6 +16,7 @@ function percentile(values: number[], point: number): number {
 }
 
 async function measure(operation: () => void | Promise<void>) {
+  await operation(); // warm up outside the measured samples
   const values: number[] = [];
   for (let index = 0; index < iterations; index += 1) {
     const start = performance.now();
@@ -45,6 +40,13 @@ if (process.env.WAVEBINDER_LICENSE) {
     runtime.refresh();
     runtime.dispose();
   });
+  const live = new RenovationRuntime(structuredClone(baseline));
+  try {
+    await live.ready(); const before = live.runtimeInfo().eventCount;
+    results.factPropagation = await measure(() => { live.beginMutation("benchmark"); live.data.nodes[50].durationDays! += 1; live.refresh(); live.deriveStatuses(); live.forecast(); });
+    results.propagationEventsIncludingWarmup = live.runtimeInfo().eventCount - before;
+    results.runtime = { nodes: live.runtimeInfo().nodeCount, dependencies: live.runtimeInfo().dependencyCount };
+  } finally { live.dispose(); }
   results.scenario = await measure(async () => {
     await simulate(baseline, "benchmark", [{ nodeId: "task-50", durationDeltaDays: 3 }]);
   });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { buildFlowEdges } from "../graphPresentation.js";
 import type {
   GraphNode,
@@ -13,7 +13,7 @@ import { api } from "../api/renovationApi.js";
 import type { OperationsData } from "../OperationsModals.js";
 import type { FlowNode } from "../components/GraphNodeCard.js";
 
-type RuntimeEvent = { nodeId: string; status: string; at: string };
+import type { RuntimeEvent } from "../../../src/shared/runtime.js";
 
 export function useRenovationWorkspace() {
   const [renovationId, setRenovationId] = useState(
@@ -28,7 +28,9 @@ export function useRenovationWorkspace() {
   const [summary, setSummary] = useState<Summary>();
   const [selected, setSelected] = useState<GraphNode>();
   const [showCritical, setShowCritical] = useState(false);
-  const [filter, setFilter] = useState<"ALL" | NodeStatus>("ALL");
+  const [filter, setFilter] = useState<
+    "ALL" | NodeStatus | "TASK" | "MATERIAL" | "ROOM"
+  >("ALL");
   const [scenario, setScenario] = useState<ScenarioResult>();
   const [scenarioView, setScenarioView] = useState<"BASELINE" | "SCENARIO">(
     "BASELINE",
@@ -44,39 +46,59 @@ export function useRenovationWorkspace() {
   const [completionOpen, setCompletionOpen] = useState(false);
   const [actualDuration, setActualDuration] = useState(1);
 
+  const activeProject = useRef(renovationId);
+  activeProject.current = renovationId;
+  const requestVersion = useRef(0);
+  const controller = useRef<AbortController | undefined>(undefined);
+  const revision = useRef<number>(-1);
+  const [connection, setConnection] = useState("Connecting");
   const load = async () => {
+    if (activeProject.current !== renovationId) return;
+    const version = ++requestVersion.current;
+    controller.current?.abort();
+    controller.current = new AbortController();
     try {
-      const [
-        nextGraph,
-        nextSummary,
-        runtime,
-        projectList,
-        projectData,
-        nextOperations,
-      ] = await Promise.all([
-        api<GraphResponse>(`/renovations/${renovationId}/graph`),
-        api<Summary>(`/renovations/${renovationId}/summary`),
-        api<{ events: RuntimeEvent[] }>(
-          `/renovations/${renovationId}/runtime/events`,
-        ),
-        api<ProjectListItem[]>("/renovations"),
-        api<RenovationData>(`/renovations/${renovationId}`),
-        api<OperationsData>(`/renovations/${renovationId}/operations`),
-      ]);
-      setGraph(nextGraph);
-      setSummary(nextSummary);
-      setEvents(runtime.events);
-      setProjects(projectList);
-      setRenovation(projectData.renovation);
-      setOperations(nextOperations);
+      const snapshot = await api<{
+        revision: number;
+        graph: GraphResponse;
+        summary: Summary;
+        events: RuntimeEvent[];
+        projects: ProjectListItem[];
+        renovation: RenovationData["renovation"];
+        operations: OperationsData;
+      }>(`/renovations/${renovationId}/workspace`, {
+        signal: controller.current.signal,
+      });
+      if (
+        version !== requestVersion.current ||
+        activeProject.current !== renovationId
+      )
+        return;
+      if (revision.current >= 0 && revision.current !== snapshot.revision) {
+        setScenario(undefined);
+        setScenarioView("BASELINE");
+      }
+      revision.current = snapshot.revision;
+      setGraph(snapshot.graph);
+      setSummary(snapshot.summary);
+      setEvents(snapshot.events);
+      setProjects(snapshot.projects);
+      setRenovation(snapshot.renovation);
+      setOperations(snapshot.operations);
       setSelected((current) =>
         current
-          ? nextGraph.nodes.find((node) => node.id === current.id)
+          ? snapshot.graph.nodes.find((node) => node.id === current.id)
           : undefined,
       );
     } catch (cause) {
+      if (
+        version !== requestVersion.current ||
+        activeProject.current !== renovationId ||
+        (cause instanceof Error && cause.name === "AbortError")
+      )
+        return;
       setError(
-        cause instanceof Error ? cause.message : "Unable to load Renograph",
+        cause instanceof Error ? cause.message : "Unable to load workspace",
       );
     }
   };
@@ -84,7 +106,21 @@ export function useRenovationWorkspace() {
     setGraph(undefined);
     setSelected(undefined);
     setScenario(undefined);
+    revision.current = -1;
+    setConnection("Connecting");
     void load();
+    const stream = new EventSource(`/api/renovations/${renovationId}/stream`);
+    stream.onopen = () => {
+      setConnection("Live");
+      void load();
+    };
+    stream.onerror = () => setConnection("Reconnecting");
+    stream.addEventListener("revision", () => void load());
+    return () => {
+      stream.close();
+      controller.current?.abort();
+      requestVersion.current += 1;
+    };
   }, [renovationId]);
   const switchProject = (id: string) => {
     sessionStorage.setItem("renograph-project", id);
@@ -120,7 +156,10 @@ export function useRenovationWorkspace() {
   const flowNodes = useMemo<FlowNode[]>(
     () =>
       (displayedGraph?.nodes ?? [])
-        .filter((node) => filter === "ALL" || node.status === filter)
+        .filter(
+          (node) =>
+            filter === "ALL" || node.status === filter || node.type === filter,
+        )
         .map((node) => ({
           id: node.id,
           type: "renovation",
@@ -200,6 +239,7 @@ export function useRenovationWorkspace() {
         selectedNode.type === "MATERIAL"
           ? { deliveryDeltaDays: delay }
           : { durationDeltaDays: delay };
+      const capturedRevision = revision.current;
       const result = await api<ScenarioResult>(
         `/renovations/${renovationId}/scenarios`,
         {
@@ -216,6 +256,11 @@ export function useRenovationWorkspace() {
           }),
         },
       );
+      if (
+        activeProject.current !== renovationId ||
+        revision.current !== capturedRevision
+      )
+        return;
       setScenario(result);
       setScenarioView("BASELINE");
       setScenarioOpen(false);
@@ -326,6 +371,7 @@ export function useRenovationWorkspace() {
   };
 
   return {
+    connection,
     renovationId,
     projects,
     renovation,

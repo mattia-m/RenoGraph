@@ -24,7 +24,7 @@ function RenovationNodeCard({ data }: NodeProps<FlowNode>) {
     <>
       <Handle type="target" position={Position.Top} className="handle" />
       <button
-        className={`graph-card ${data.type.toLowerCase()} ${data.status.toLowerCase()} ${data.criticalState === "ACTIVE" ? "critical" : data.criticalState === "HISTORICAL" ? "historical-critical" : ""}`}
+        className={`nodrag graph-card ${data.type.toLowerCase()} ${data.status.toLowerCase()} ${data.criticalState === "ACTIVE" ? "critical" : data.criticalState === "HISTORICAL" ? "historical-critical" : ""}`}
         onClick={() => data.onSelect?.(data)}
       >
         <span className="card-kicker">

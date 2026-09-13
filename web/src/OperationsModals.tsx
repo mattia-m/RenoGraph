@@ -295,13 +295,26 @@ export function OperationsModal({
           </section>
           <section>
             <h3>Purchases</h3>
+            <p>
+              Receiving a linked order marks its material delivered and
+              recalculates readiness and the forecast. Use Undo to reverse a
+              receipt.
+            </p>
             {operations.purchases.map((item) => (
               <div className="workflow-row" key={item.id}>
-                <b>{item.description}</b>
+                <b>
+                  {item.description}
+                  {item.materialId
+                    ? ` → ${materials.find((material) => material.id === item.materialId)?.name ?? item.materialId}`
+                    : ""}
+                </b>
                 <span>
                   {money.format(item.amount)} · {item.status}
                 </span>
                 <select
+                  disabled={
+                    item.status === "RECEIVED" && Boolean(item.materialId)
+                  }
                   value={item.status}
                   onChange={(event) =>
                     void onMutate(
