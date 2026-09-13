@@ -11,4 +11,4 @@ Use a temporary demo data directory for a recording so the working project stays
 7. Run a delay scenario. Inspect the captured scenario state and propagation details; switch back to baseline to show isolation. Change the baseline in the other tab and show the obsolete scenario clearing.
 8. Expand a propagation event to connect its source and mutation ID to before/after values. Explain that the graph's runtime counts include actual registered nodes, while the diagnostic log retains only 100 events.
 
-The supplier uses sample data. The recorded tour covers an earlier version; this walkthrough describes the current application.
+The supplier uses sample data. The narrated tour and this walkthrough cover the current application.

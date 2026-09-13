@@ -1,0 +1,182 @@
+1
+00:00:00,150 --> 00:00:03,087
+Renograph connects renovation decisions to their consequences.
+
+2
+00:00:03,087 --> 00:00:12,267
+Tasks, materials and rooms form a living dependency graph, showing what can start,
+why work is blocked, and how changes affect cost and completion.
+
+3
+00:00:12,683 --> 00:00:15,406
+Task facts use Wavebinder single nodes.
+
+4
+00:00:15,406 --> 00:00:20,073
+Custom functions combine prerequisites, material availability and manual clearance
+into readiness.
+
+5
+00:00:20,073 --> 00:00:23,573
+A complex node collects status, duration and cost.
+
+6
+00:00:23,573 --> 00:00:26,684
+The inspector exposes inputs and root blockers.
+
+7
+00:00:27,117 --> 00:00:30,567
+Completing plumbing records six actual days against four planned.
+
+8
+00:00:30,567 --> 00:00:34,018
+Its complex state propagates the variance into the forecast.
+
+9
+00:00:34,018 --> 00:00:38,849
+Completed critical work stays visible as history, distinct from unfinished work
+needing attention.
+
+10
+00:00:39,250 --> 00:00:41,786
+Material choices use Wavebinder multi nodes.
+
+11
+00:00:41,786 --> 00:00:45,408
+Selecting express delivery updates availability, lead time and cost.
+
+12
+00:00:45,408 --> 00:00:50,479
+Dependent state and the forecast react, making the consequences of each option
+visible.
+
+13
+00:00:50,883 --> 00:00:54,071
+Update quote uses a native Wavebinder HTTP GET.
+
+14
+00:00:54,071 --> 00:00:58,675
+The labelled demo supplier returns three days and twelve hundred fifty euros.
+
+15
+00:00:58,675 --> 00:01:00,800
+Validated results update option facts.
+
+16
+00:01:00,800 --> 00:01:05,050
+Loading, outage and retry are visible; revision checks reject stale responses.
+
+17
+00:01:05,483 --> 00:01:08,349
+Receiving a linked purchase sets the delivery fact.
+
+18
+00:01:08,349 --> 00:01:12,806
+Wavebinder updates availability, room lists, readiness and the forecast in one
+saved transaction.
+
+19
+00:01:12,806 --> 00:01:14,079
+Undo restores it.
+
+20
+00:01:14,079 --> 00:01:16,944
+Updating a quote does not place an order.
+
+21
+00:01:17,350 --> 00:01:22,209
+The dashed plumber link explains why kitchen work waits for bathroom plumbing.
+
+22
+00:01:22,209 --> 00:01:25,573
+Assignments feed project facts into the reactive forecast.
+
+23
+00:01:25,573 --> 00:01:30,058
+RenoGraph calculates resource sequencing and critical paths; Wavebinder propagates
+changed inputs.
+
+24
+00:01:30,483 --> 00:01:34,162
+Rooms expose Wavebinder lists of complex material records.
+
+25
+00:01:34,162 --> 00:01:42,338
+Delivery, option, availability and cost stay synchronized with their source
+materials: a practical room checklist backed by inspectable dependencies.
+
+26
+00:01:42,750 --> 00:01:45,935
+Scenarios initialize an independent runtime before applying changes.
+
+27
+00:01:45,935 --> 00:01:50,535
+Here, a kitchen delay adds fourteen days and three hundred fifty euros.
+
+28
+00:01:50,535 --> 00:01:52,305
+Readiness changes are included.
+
+29
+00:01:52,305 --> 00:01:56,551
+The captured snapshot stays separate from baseline; its runtime is disposed.
+
+30
+00:01:56,983 --> 00:01:59,243
+Each project has independent state.
+
+31
+00:01:59,243 --> 00:02:04,516
+New tasks and dependencies build a replacement runtime; ordinary fact edits reuse
+it.
+
+32
+00:02:04,516 --> 00:02:06,776
+Professionals and purchases affect forecasts.
+
+33
+00:02:06,776 --> 00:02:09,412
+Contractors and documents remain supporting records.
+
+34
+00:02:09,817 --> 00:02:13,973
+A task added in one tab reaches another through server-sent events.
+
+35
+00:02:13,973 --> 00:02:16,745
+One committed snapshot keeps the workspace consistent.
+
+36
+00:02:16,745 --> 00:02:21,248
+Reconnect reloads current state; old requests and obsolete scenario comparisons are
+discarded.
+
+37
+00:02:21,650 --> 00:02:26,535
+Telemetry links mutation identifiers to sources, before-and-after values and
+derived emissions.
+
+38
+00:02:26,535 --> 00:02:28,570
+Initialization is labelled separately.
+
+39
+00:02:28,570 --> 00:02:32,234
+Health checks and idempotent cleanup protect runtime lifecycle.
+
+40
+00:02:32,234 --> 00:02:35,897
+Forty-four tests passed, with no licensed tests skipped.
+
+41
+00:02:36,317 --> 00:02:40,255
+Actual fact propagation measured around twenty-four milliseconds median here.
+
+42
+00:02:40,255 --> 00:02:44,981
+Wavebinder owns reactive state and propagation; RenoGraph owns scheduling and
+costing.
+
+43
+00:02:44,981 --> 00:02:48,525
+Together, they make renovation decisions explainable and useful.

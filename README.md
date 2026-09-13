@@ -12,13 +12,13 @@ scenario comparison remain explicit Renograph domain logic.
 
 ## Demo
 
-- [Watch the 95-second product tour](Demo/renograph-contest-demo.mp4)
+- [Watch the 2-minute 49-second product tour](Demo/renograph-contest-demo.mp4)
 - [Follow the guided product walkthrough](Demo/demo-script.md)
 
-The video is captured from the runnable Casa Rossi application. It demonstrates
-the live Wavebinder graph, critical-path highlighting, blocker explanations,
-material choices, an isolated delivery-delay scenario, structured room material
-lists and the operational workflow.
+The narrated walkthrough uses fresh captures of the running Casa Rossi application,
+with English captions and close-ups explaining each workflow and its Wavebinder
+logic. It covers readiness, actual durations, material choices, supplier quotes,
+purchase receipts, shared crews, room lists, scenarios, live updates and diagnostics.
 
 ## Visual Tour
 
@@ -79,9 +79,9 @@ docker compose up --build
 7. Select the bathroom to inspect its `LIST` → `COMPLEX` material bundle.
 8. Open the operations workspace to inspect resource conflicts, purchases and documents.
 
-The [narrated video](Demo/renograph-contest-demo.mp4) follows this sequence. The
-[demo script](Demo/demo-script.md) also contains the longer interactive flow for
-hands-on exploration.
+The [narrated video](Demo/renograph-contest-demo.mp4) covers these workflows and
+the newer supplier, purchase, live-update and runtime improvements. The
+[demo script](Demo/demo-script.md) contains chapter timings and the full narration.
 
 ## Architecture
 
@@ -283,4 +283,4 @@ Propagation entries include the change source, mutation ID, fact or derived valu
 
 Health checks return 503 when runtimes are unavailable. Shutdown closes clients and disposes subscriptions and pending quote consumers. Partial startup failures also clean up initialized runtimes.
 
-See the [project walkthrough](docs/project-walkthrough.md) for a guided example. The recorded tour shows an earlier version; the written walkthrough covers the current workflows.
+See the [project walkthrough](docs/project-walkthrough.md) for a guided example. The recorded tour includes the current supplier, delivery, scenario and live-update workflows.
