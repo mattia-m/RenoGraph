@@ -12,10 +12,10 @@ scenario comparison remain explicit Renograph domain logic.
 
 ## Demo
 
-- [Watch the 2-minute 49-second product tour](Demo/renograph-contest-demo.mp4)
+- [Watch the narrated product demo](Demo/renograph-contest-demo.mp4)
 - [Follow the guided product walkthrough](Demo/demo-script.md)
 
-The narrated walkthrough uses fresh captures of the running Casa Rossi application,
+The narrated walkthrough records live interactions in the Casa Rossi application,
 with English captions and close-ups explaining each workflow and its Wavebinder
 logic. It covers readiness, actual durations, material choices, supplier quotes,
 purchase receipts, shared crews, room lists, scenarios, live updates and diagnostics.
